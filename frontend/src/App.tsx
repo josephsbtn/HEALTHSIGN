@@ -169,8 +169,8 @@ export default function HandSignDetectionPage() {
   }, [serverUrl]);
 
   useEffect(() => {
-    if (hasStarted) void loadChatSessions();
-  }, [hasStarted, loadChatSessions]);
+    void loadChatSessions();
+  }, [loadChatSessions]);
 
   useEffect(() => {
     void fetchServerStatus();
@@ -318,37 +318,20 @@ export default function HandSignDetectionPage() {
   if (!hasStarted) {
     return (
       <div className="relative min-h-screen overflow-hidden bg-background text-foreground">
+        {/* Background layers */}
         <div className="absolute inset-0 bg-[linear-gradient(135deg,hsl(var(--background))_0%,hsl(var(--background))/0.96_50%,hsl(var(--muted))/0.85_100%)]" />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#6ddccd]/10 to-[#26a0c9]/10" />
-
         <div className="absolute inset-0 overflow-hidden opacity-90">
           <div className="absolute left-[-6rem] top-[-5rem] h-80 w-80 rounded-full border-2 border-dashed border-[#6ddccd]/45 bg-[#6ddccd]/8 blur-[1px]" />
           <div className="absolute right-[8%] top-[12%] h-64 w-64 rounded-full border border-[#26a0c9]/35 bg-[#26a0c9]/8" />
-          <div className="absolute left-[14%] top-[18%] h-28 w-28 rounded-full border border-[#6ddccd]/35" />
           <div className="absolute right-[18%] bottom-[14%] h-96 w-96 rounded-full border-2 border-dotted border-[#26a0c9]/45 bg-[#26a0c9]/5" />
-          <div className="absolute bottom-[-4rem] left-[38%] h-72 w-72 rounded-full border border-[#6ddccd]/25" />
           <div className="absolute left-[8%] bottom-[18%] h-40 w-40 rounded-full border-2 border-[#26a0c9]/30" />
         </div>
 
-        <div className="pointer-events-none absolute inset-y-0 left-0 right-0 z-[5] hidden overflow-hidden lg:block">
-          <img
-            src={heroImage}
-            alt="Hand sign illustration"
-            className="absolute left-[-4rem] top-1/2 w-60 rounded-[1.25rem] object-cover"
-            style={{ transform: "translateY(-5%) rotate(35deg)" }}
-          />
-          <img
-            src={heroImage2}
-            alt="Hand sign illustration"
-            className="absolute right-[-4rem] top-1/2 w-80 rounded-[1.25rem] object-cover"
-            style={{ transform: "translateY(-200%) rotate(-25deg)" }}
-          />
-        </div>
-
+        {/* Patient form modal */}
         {showPatientForm && (
           <div className="absolute inset-0 z-[20] flex items-center justify-center px-6">
             <div className="absolute inset-0 bg-background/35 backdrop-blur-md" />
-
             <div className="relative w-full max-w-md overflow-hidden rounded-[2rem] border border-[#6ddccd]/35 bg-gradient-to-br from-white/90 via-[#f3fffd]/95 to-[#eefcff]/95 p-8 text-center shadow-2xl sm:p-10">
               <button
                 type="button"
@@ -357,10 +340,8 @@ export default function HandSignDetectionPage() {
                 aria-label="Close patient form">
                 <X className="h-4 w-4" />
               </button>
-
               <div className="pointer-events-none absolute -top-10 left-1/2 h-20 w-36 -translate-x-1/2 rounded-full bg-[#6ddccd]/25 blur-2xl" />
               <div className="pointer-events-none absolute -right-8 top-10 h-20 w-20 rounded-full bg-[#26a0c9]/15 blur-2xl" />
-
               <PatientForm
                 patientNameInput={patientNameInput}
                 onPatientNameChange={setPatientNameInput}
@@ -372,39 +353,57 @@ export default function HandSignDetectionPage() {
           </div>
         )}
 
+        {/* Main layout */}
         <div
-          className={`relative z-10 flex min-h-screen items-center justify-center px-6 transition-all duration-500 ${
+          className={`relative z-10 min-h-screen px-6 py-10 transition-all duration-500 ${
             isTransitioningIn
               ? "opacity-0 scale-95 -translate-y-6"
               : "opacity-100 scale-100 translate-y-0"
           }`}>
-          <div className="relative w-full max-w-3xl overflow-hidden rounded-[2rem] bg-card/75 px-8 py-10 sm:px-10 sm:py-12">
-            <div className="absolute left-6 top-6 h-24 w-24 rounded-full border border-[#6ddccd]/30" />
-            <div className="absolute right-6 top-10 h-14 w-14 rounded-full border-2 border-dashed border-[#26a0c9]/45" />
-            <div className="absolute bottom-8 left-8 h-20 w-20 rounded-full border border-[#26a0c9]/25" />
-            <div className="absolute bottom-6 right-10 h-16 w-16 rounded-full border-2 border-dotted border-[#6ddccd]/40" />
-
-            <div className="relative z-10 mx-auto flex max-w-2xl flex-col items-center text-center">
-              <h1 className="text-3xl font-bold tracking-tight sm:text-4xl lg:text-5xl">
-                Hand Sign Detection
-              </h1>
-              <p className="mt-4 max-w-xl text-sm text-muted-foreground sm:text-base lg:text-lg">
-                Start live webcam capture and stream hand signs for real-time
-                translation.
-              </p>
-
-              <div className="mt-10 flex justify-center">
-                <button
-                  type="button"
-                  onClick={handleStartExperience}
-                  className="group inline-flex items-center gap-3 rounded-2xl bg-gradient-to-r from-[#6ddccd] to-[#26a0c9] px-8 py-4 text-base font-semibold text-white shadow-xl shadow-[#26a0c9]/20 transition-all duration-300 hover:scale-105 hover:shadow-2xl">
-                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/20 transition-transform duration-300 group-hover:translate-x-0.5">
-                    <Play className="h-4 w-4" />
-                  </span>
-                  Start
-                </button>
+          <div className="mx-auto max-w-5xl flex flex-col gap-6">
+            {/* Hero card */}
+            <div className="relative overflow-hidden rounded-[2rem] bg-card/75 px-8 py-10 sm:px-10 sm:py-12 shadow-xl">
+              <div className="absolute left-6 top-6 h-24 w-24 rounded-full border border-[#6ddccd]/30" />
+              <div className="absolute right-6 top-10 h-14 w-14 rounded-full border-2 border-dashed border-[#26a0c9]/45" />
+              <div className="absolute bottom-8 left-8 h-20 w-20 rounded-full border border-[#26a0c9]/25" />
+              <div className="absolute bottom-6 right-10 h-16 w-16 rounded-full border-2 border-dotted border-[#6ddccd]/40" />
+              <div className="relative z-10 flex flex-col items-center text-center">
+                <h1 className="text-3xl font-bold tracking-tight sm:text-4xl lg:text-5xl">
+                  Hand Sign Detection
+                </h1>
+                <p className="mt-4 max-w-xl text-sm text-muted-foreground sm:text-base lg:text-lg">
+                  Start live webcam capture and stream hand signs for real-time
+                  translation.
+                </p>
+                <div className="mt-8 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={handleStartExperience}
+                    className="group inline-flex items-center gap-3 rounded-2xl bg-gradient-to-r from-[#6ddccd] to-[#26a0c9] px-8 py-4 text-base font-semibold text-white shadow-xl shadow-[#26a0c9]/20 transition-all duration-300 hover:scale-105 hover:shadow-2xl">
+                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/20 transition-transform duration-300 group-hover:translate-x-0.5">
+                      <Play className="h-4 w-4" />
+                    </span>
+                    Start
+                  </button>
+                </div>
               </div>
             </div>
+
+            {/* Riwayat konsultasi chat */}
+            {chatSessions.length > 0 && (
+              <div className="rounded-[1.75rem] border border-[#26a0c9]/20 bg-card/75 px-5 py-4 shadow-xl backdrop-blur-sm">
+                <div className="flex items-center gap-2 mb-3">
+                  <MessageSquare className="h-4 w-4 text-[#26a0c9]" />
+                  <h2 className="text-sm font-semibold text-foreground">
+                    Riwayat Konsultasi
+                  </h2>
+                  <span className="ml-auto text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                    {chatSessions.length} sesi
+                  </span>
+                </div>
+                <HistoryPanel sessions={chatSessions} compact />
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -569,17 +568,6 @@ export default function HandSignDetectionPage() {
                 streamBuffer={streamBuffer}
               />
             </div>
-          </div>
-
-          {/* ── Riwayat Chat Pasien ── */}
-          <div className="rounded-[1.75rem] border border-[#26a0c9]/20 bg-card/75 px-5 py-4 shadow-xl backdrop-blur-sm">
-            <div className="flex items-center gap-2 mb-3">
-              <MessageSquare className="h-4 w-4 text-[#26a0c9]" />
-              <h2 className="text-sm font-semibold text-foreground">
-                Riwayat Konsultasi Chat
-              </h2>
-            </div>
-            <HistoryPanel sessions={chatSessions} compact />
           </div>
         </div>
 

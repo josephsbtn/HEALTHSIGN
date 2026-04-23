@@ -23,6 +23,8 @@ export const refineTextWithGemini = async (text) => {
     return refineMock(text);
   }
 
+  logger.debug("Refining text with Gemini API:", text);
+
   try {
     const response = await axios.post(
       `https://generativelanguage.googleapis.com/v1beta/models/${config.GEMINI_MODEL}:generateContent`,
