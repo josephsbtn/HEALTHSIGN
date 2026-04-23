@@ -107,7 +107,7 @@ function parseMessage(rawData: unknown): ServerMessage | null {
 
 export function useWebSocket({
   enabled = true,
-  serverUrl = "ws://localhost:8000",
+  serverUrl = "wss://healthsign.me/ws",
   patientId,
   onAlphabetReceived,
   onFinalReceived,

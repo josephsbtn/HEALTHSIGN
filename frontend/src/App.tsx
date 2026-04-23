@@ -28,7 +28,7 @@ import { api, type ServerStatus } from "./lib/api";
 import type { HistoryEntry } from "./lib/types";
 
 const DEFAULT_SERVER_URL =
-  import.meta.env.VITE_BACKEND_WS_URL ?? "ws://localhost:8000";
+  import.meta.env.VITE_BACKEND_WS_URL ?? "wss://healthsign.me/ws";
 
 export default function HandSignDetectionPage() {
   const [hasStarted, setHasStarted] = useState(false);
