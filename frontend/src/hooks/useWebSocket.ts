@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { FinalMessage, ServerMessage } from "@/lib/types";
 
 export interface UseWebSocketOptions {
+  enabled?: boolean;
   serverUrl?: string;
   patientId?: string;
   onAlphabetReceived?: (alphabet: string) => void;
@@ -91,6 +92,7 @@ function parseMessage(rawData: unknown): ServerMessage | null {
 }
 
 export function useWebSocket({
+  enabled = true,
   serverUrl = "ws://localhost:8000",
   patientId,
   onAlphabetReceived,
@@ -247,6 +249,13 @@ export function useWebSocket({
   }, [patientId, serverUrl]);
 
   useEffect(() => {
+    if (!enabled) {
+      disconnect();
+      setIsConnected(false);
+      setError(null);
+      return;
+    }
+
     shouldReconnectRef.current = true;
     connect();
 
@@ -256,7 +265,7 @@ export function useWebSocket({
       wsRef.current?.close(1000, "Component unmounted");
       wsRef.current = null;
     };
-  }, [connect, clearReconnectTimer]);
+  }, [connect, clearReconnectTimer, disconnect, enabled]);
 
   const sendFrame = useCallback((frame: string) => {
     if (wsRef.current?.readyState !== WebSocket.OPEN) {
