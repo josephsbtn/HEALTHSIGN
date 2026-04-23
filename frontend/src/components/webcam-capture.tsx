@@ -16,6 +16,8 @@ export function WebcamCapture({ onFrame, showKeypoints = true, keypoints = [] }:
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isActive, setIsActive] = useState(false);
   const [fps, setFps] = useState(0);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [cameraReady, setCameraReady] = useState(false);
   const frameCountRef = useRef(0);
   const lastTimeRef = useRef(Date.now());
 
@@ -27,9 +29,34 @@ export function WebcamCapture({ onFrame, showKeypoints = true, keypoints = [] }:
     frameRate: { ideal: 30, max: 30 }
   };
 
+  // Handle successful camera access
+  const handleUserMedia = useCallback(() => {
+    setCameraReady(true);
+    setCameraError(null);
+  }, []);
+
+  // Handle camera access errors
+  const handleUserMediaError = useCallback((error: DOMException) => {
+    console.error("Camera error:", error);
+    let errorMessage = "Unable to access camera";
+    
+    if (error.name === "NotAllowedError") {
+      errorMessage = "Camera permission denied. Please allow camera access in your browser settings.";
+    } else if (error.name === "NotFoundError") {
+      errorMessage = "No camera device found. Please check your hardware.";
+    } else if (error.name === "NotReadableError") {
+      errorMessage = "Camera is in use by another application. Please close it and try again.";
+    } else if (error.name === "OverconstrainedError") {
+      errorMessage = "Camera doesn't support the required settings. Try a different camera.";
+    }
+    
+    setCameraError(errorMessage);
+    setCameraReady(false);
+  }, []);
+
   // Capture and process frames
   const captureFrame = useCallback(() => {
-    if (webcamRef.current && isActive) {
+    if (webcamRef.current && isActive && cameraReady && !cameraError) {
       const imageSrc = webcamRef.current.getScreenshot();
       if (imageSrc && onFrame) {
         onFrame(imageSrc);
@@ -44,7 +71,7 @@ export function WebcamCapture({ onFrame, showKeypoints = true, keypoints = [] }:
         }
       }
     }
-  }, [isActive, onFrame]);
+  }, [isActive, onFrame, cameraReady, cameraError]);
 
   // Draw keypoints overlay
   useEffect(() => {
@@ -113,6 +140,8 @@ export function WebcamCapture({ onFrame, showKeypoints = true, keypoints = [] }:
           videoConstraints={videoConstraints}
           className="w-full h-full object-cover"
           mirrored={true}
+          onUserMedia={handleUserMedia}
+          onUserMediaError={handleUserMediaError}
         />
 
         {/* Keypoint overlay canvas */}
@@ -127,14 +156,25 @@ export function WebcamCapture({ onFrame, showKeypoints = true, keypoints = [] }:
 
         {/* Status overlay */}
         <div className="absolute top-4 left-4 right-4 flex justify-between items-start">
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2">
+            {cameraError && (
+              <Badge className="bg-red-500 text-white text-xs py-1 px-2">
+                {cameraError}
+              </Badge>
+            )}
+            {!cameraError && !cameraReady && (
+              <Badge variant="secondary" className="text-xs py-1 px-2">
+                <Activity className="w-3 h-3 mr-1 animate-pulse" />
+                Initializing camera...
+              </Badge>
+            )}
             {isActive ? (
               <Badge className="bg-green-500 text-white">
                 <Activity className="w-3 h-3 mr-1 animate-pulse" />
                 Live
               </Badge>
             ) : (
-              <Badge variant="secondary">
+              cameraReady && <Badge variant="secondary">
                 <CameraOff className="w-3 h-3 mr-1" />
                 Inactive
               </Badge>
@@ -170,11 +210,20 @@ export function WebcamCapture({ onFrame, showKeypoints = true, keypoints = [] }:
       <div className="p-4 bg-gray-50 border-t">
         <div className="flex justify-between items-center">
           <div className="text-sm text-gray-600">
-            {isActive ? "Camera is capturing frames" : "Camera is ready"}
+            {cameraError ? (
+              <span className="text-red-600 font-medium">Camera Error: {cameraError}</span>
+            ) : !cameraReady ? (
+              <span className="text-yellow-600">Initializing camera...</span>
+            ) : isActive ? (
+              "Camera is capturing frames"
+            ) : (
+              "Camera is ready"
+            )}
           </div>
           <Button
             onClick={() => setIsActive(!isActive)}
             variant={isActive ? "destructive" : "default"}
+            disabled={cameraError !== null || !cameraReady}
           >
             {isActive ? (
               <>
