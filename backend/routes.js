@@ -5,6 +5,15 @@ import {
   getAllHistory,
   deleteHistoryByPatient,
 } from "./service/historyService.js";
+import {
+  createChat,
+  addMessage,
+  getChatById,
+  getChatsByPatient,
+  getAllChats,
+  deleteChatsByPatient,
+  deleteChatById,
+} from "./service/chatService.js";
 import { refineText } from "./service/refinementService.js";
 import { detectAlphabet } from "./service/aiService.js";
 import { getActiveSessions, getSessionCount } from "./service/webSocket.js";
@@ -191,6 +200,159 @@ router.delete(
 
     const result = await deleteHistoryByPatient(patientId);
     res.json({ message: "History deleted", deleted: result.deletedCount });
+  }),
+);
+
+// ─────────────────────────────────────────────
+// CHAT
+// ─────────────────────────────────────────────
+
+/**
+ * POST /api/chat
+ * Buat sesi chat baru untuk pasien.
+ *
+ * Body: { patientName: string }
+ * Response: saved Chat document
+ */
+router.post(
+  "/chat",
+  asyncHandler(async (req, res) => {
+    const { patientName } = req.body;
+
+    if (!patientName) {
+      return res.status(400).json({ error: "patientName is required" });
+    }
+
+    const chat = await createChat(patientName);
+    res.status(201).json(chat);
+  }),
+);
+
+/**
+ * GET /api/chat
+ * Ambil seluruh sesi chat (semua pasien). Query: ?limit=100
+ *
+ * Response: { total: number, data: Chat[] }
+ */
+router.get(
+  "/chat",
+  asyncHandler(async (req, res) => {
+    const limit = Math.min(parseInt(req.query.limit) || 100, 500);
+    const chats = await getAllChats(limit);
+    res.json({ total: chats.length, data: chats });
+  }),
+);
+
+/**
+ * GET /api/chat/patient/:patientName
+ * Ambil semua sesi chat milik satu pasien.
+ *
+ * Response: { patientName: string, total: number, data: Chat[] }
+ */
+router.get(
+  "/chat/patient/:patientName",
+  asyncHandler(async (req, res) => {
+    const { patientName } = req.params;
+
+    if (!patientName) {
+      return res.status(400).json({ error: "patientName is required" });
+    }
+
+    const chats = await getChatsByPatient(patientName);
+    res.json({ patientName, total: chats.length, data: chats });
+  }),
+);
+
+/**
+ * GET /api/chat/:chatId
+ * Ambil satu sesi chat berdasarkan ID.
+ *
+ * Response: Chat document
+ */
+router.get(
+  "/chat/:chatId",
+  asyncHandler(async (req, res) => {
+    const { chatId } = req.params;
+
+    if (!chatId) {
+      return res.status(400).json({ error: "chatId is required" });
+    }
+
+    const chat = await getChatById(chatId);
+    res.json(chat);
+  }),
+);
+
+/**
+ * POST /api/chat/:chatId/message
+ * Tambah pesan ke sesi chat yang sudah ada.
+ *
+ * Body: { sender: "patient"|"ai"|"doctor", message: string }
+ * Response: updated Chat document
+ */
+router.post(
+  "/chat/:chatId/message",
+  asyncHandler(async (req, res) => {
+    const { chatId } = req.params;
+    const { sender, message } = req.body;
+
+    if (!chatId) {
+      return res.status(400).json({ error: "chatId is required" });
+    }
+    if (!sender) {
+      return res.status(400).json({ error: "sender is required" });
+    }
+    if (!["patient", "ai", "doctor"].includes(sender)) {
+      return res.status(400).json({
+        error: "sender must be one of: patient, ai, doctor",
+      });
+    }
+    if (!message || typeof message !== "string") {
+      return res.status(400).json({ error: "message (string) is required" });
+    }
+
+    const chat = await addMessage(chatId, sender, message);
+    res.json(chat);
+  }),
+);
+
+/**
+ * DELETE /api/chat/patient/:patientName
+ * Hapus semua sesi chat milik satu pasien.
+ *
+ * Response: { message: string, deleted: number }
+ */
+router.delete(
+  "/chat/patient/:patientName",
+  asyncHandler(async (req, res) => {
+    const { patientName } = req.params;
+
+    if (!patientName) {
+      return res.status(400).json({ error: "patientName is required" });
+    }
+
+    const result = await deleteChatsByPatient(patientName);
+    res.json({ message: "Chats deleted", deleted: result.deletedCount });
+  }),
+);
+
+/**
+ * DELETE /api/chat/:chatId
+ * Hapus satu sesi chat berdasarkan ID.
+ *
+ * Response: { message: string, data: Chat }
+ */
+router.delete(
+  "/chat/:chatId",
+  asyncHandler(async (req, res) => {
+    const { chatId } = req.params;
+
+    if (!chatId) {
+      return res.status(400).json({ error: "chatId is required" });
+    }
+
+    const result = await deleteChatById(chatId);
+    res.json({ message: "Chat deleted", data: result });
   }),
 );
 
