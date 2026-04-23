@@ -2,7 +2,7 @@
 
 import { History, Volume2, Clock, Layers } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { HistoryEntry } from "@/app/page";
+import type { HistoryEntry } from "@/lib/types";
 
 interface HistoryPanelProps {
   history: HistoryEntry[];

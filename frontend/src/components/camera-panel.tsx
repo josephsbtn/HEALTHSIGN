@@ -2,18 +2,20 @@
 
 import { useRef, useCallback, useEffect, useState } from "react";
 import Webcam from "react-webcam";
-import { Camera, CameraOff, Activity, Zap } from "lucide-react";
+import { Camera, CameraOff, Activity, Zap, Loader2 } from "lucide-react";
 
 interface CameraPanelProps {
   onFrame?: (imageData: string) => void;
   onStop?: () => void;
   isConnected?: boolean;
+  isProcessing?: boolean;
 }
 
 export function CameraPanel({
   onFrame,
   onStop,
   isConnected = false,
+  isProcessing = false,
 }: CameraPanelProps) {
   const webcamRef = useRef<Webcam>(null);
   const [isActive, setIsActive] = useState(false);
@@ -22,6 +24,7 @@ export function CameraPanel({
   const [cameraReady, setCameraReady] = useState(false);
   const frameCountRef = useRef(0);
   const lastTimeRef = useRef(Date.now());
+  const captureIntervalMs = 120;
 
   const videoConstraints = {
     width: 1280,
@@ -35,13 +38,14 @@ export function CameraPanel({
     setCameraError(null);
   }, []);
 
-  const handleUserMediaError = useCallback((error: DOMException) => {
+  const handleUserMediaError = useCallback((error: string | DOMException) => {
+    const errorName = typeof error === "string" ? error : error.name;
     let errorMessage = "Unable to access camera";
-    if (error.name === "NotAllowedError")
+    if (errorName === "NotAllowedError")
       errorMessage = "Camera permission denied";
-    else if (error.name === "NotFoundError")
+    else if (errorName === "NotFoundError")
       errorMessage = "No camera found";
-    else if (error.name === "NotReadableError")
+    else if (errorName === "NotReadableError")
       errorMessage = "Camera in use";
     setCameraError(errorMessage);
     setCameraReady(false);
@@ -64,9 +68,15 @@ export function CameraPanel({
 
   useEffect(() => {
     if (!isActive) return;
-    const interval = setInterval(captureFrame, 1000 / 30);
+    const interval = setInterval(captureFrame, captureIntervalMs);
     return () => clearInterval(interval);
   }, [isActive, captureFrame]);
+
+  useEffect(() => {
+    if (!isConnected && isActive) {
+      setIsActive(false);
+    }
+  }, [isActive, isConnected]);
 
   const handleToggle = () => {
     if (isActive) {
@@ -77,15 +87,13 @@ export function CameraPanel({
     }
   };
 
-  const canStart = cameraReady && !cameraError && isConnected;
+  const canStart = cameraReady && !cameraError && isConnected && !isProcessing;
 
   return (
     <div className="relative rounded-3xl overflow-hidden shadow-2xl glow-teal">
-      {/* Gradient border effect */}
       <div className="absolute inset-0 gradient-mint-teal opacity-30" />
       
       <div className="relative bg-card m-[2px] rounded-[22px] overflow-hidden">
-        {/* Video container */}
         <div className="relative bg-foreground/5 aspect-video">
           <Webcam
             ref={webcamRef}
@@ -98,7 +106,6 @@ export function CameraPanel({
             onUserMediaError={handleUserMediaError}
           />
 
-          {/* Overlay indicators */}
           <div className="absolute top-4 left-4 right-4 flex justify-between items-start">
             <div className="flex flex-col gap-2">
               {isActive ? (
@@ -113,6 +120,13 @@ export function CameraPanel({
                 <div className="flex items-center gap-2 bg-card/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-lg">
                   <CameraOff className="w-3.5 h-3.5 text-muted-foreground" />
                   <span className="text-sm font-medium text-muted-foreground">Idle</span>
+                </div>
+              )}
+
+              {isProcessing && (
+                <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 rounded-full shadow-lg text-amber-700">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span className="text-sm font-medium">Processing result</span>
                 </div>
               )}
 
@@ -132,7 +146,6 @@ export function CameraPanel({
             )}
           </div>
 
-          {/* Center frame guide */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className={`border-2 border-dashed rounded-2xl w-3/4 h-3/4 flex items-center justify-center transition-colors duration-300 ${
               isActive ? "border-primary/50" : "border-muted-foreground/30"
@@ -157,12 +170,16 @@ export function CameraPanel({
           </div>
         </div>
 
-        {/* Controls */}
         <div className="p-5 bg-card border-t border-border/50">
           <div className="flex justify-between items-center">
             <div className="text-sm text-muted-foreground">
               {cameraError ? (
                 <span className="text-destructive font-medium">{cameraError}</span>
+              ) : isProcessing ? (
+                <span className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                  Waiting for final result...
+                </span>
               ) : !cameraReady ? (
                 <span className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
@@ -203,6 +220,11 @@ export function CameraPanel({
                 <span className="flex items-center gap-2">
                   <CameraOff className="w-4 h-4" />
                   Stop Detection
+                </span>
+              ) : isProcessing ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Processing...
                 </span>
               ) : (
                 <span className="flex items-center gap-2">

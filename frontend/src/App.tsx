@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertCircle, Hand, Settings } from "lucide-react";
 import { CameraPanel } from "./components/camera-panel";
 import { LiveTranslation } from "./components/live-translation";
 import { FinalResult } from "./components/final-result";
@@ -9,94 +10,92 @@ import { StatusBar } from "./components/status-bar";
 import { SettingsDialog } from "./components/settings-dialog";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { api, type ServerStatus } from "./lib/api";
-import { Hand, Settings } from "lucide-react";
+import type { HistoryEntry } from "./lib/types";
 
-export interface HistoryEntry {
-  id: number;
-  text: string;
-  originalText: string;
-  frameCount: number;
-  duration: number;
-  timestamp: Date;
-}
+const DEFAULT_SERVER_URL =
+  import.meta.env.VITE_BACKEND_WS_URL ?? "ws://localhost:8000";
 
 export default function HandSignDetectionPage() {
-  // Configuration state
-  const [serverUrl, setServerUrl] = useState("ws://localhost:8000");
+  const [serverUrl, setServerUrl] = useState(DEFAULT_SERVER_URL);
   const [patientId, setPatientId] = useState("");
   const [showSettings, setShowSettings] = useState(false);
-
-  // Server status state
   const [serverStatus, setServerStatus] = useState<ServerStatus | null>(null);
   const [isLoadingStatus, setIsLoadingStatus] = useState(false);
-
-  // Translation state
   const [streamBuffer, setStreamBuffer] = useState("");
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSavingHistory, setIsSavingHistory] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Accumulate stream buffer for tracking original text
-  const streamBufferRef = useState<string>("");
+  const streamBufferRef = useRef("");
 
-  // Update API base URL when server URL changes
   useEffect(() => {
     api.setBaseUrl(serverUrl);
   }, [serverUrl]);
 
-  // Fetch server status
   const fetchServerStatus = useCallback(async () => {
     setIsLoadingStatus(true);
     try {
       const status = await api.getStatus();
       setServerStatus(status);
-    } catch {
+    } catch (err) {
       setServerStatus(null);
+      setErrorMessage(
+        err instanceof Error ? err.message : "Failed to load backend status",
+      );
     } finally {
       setIsLoadingStatus(false);
     }
   }, []);
 
-  // Load history from backend on mount
+  const loadHistory = useCallback(async () => {
+    try {
+      const response = patientId
+        ? await api.getPatientHistory(patientId)
+        : await api.getHistory(50);
+
+      const entries: HistoryEntry[] = response.data.map((record) => ({
+        id: new Date(record.createdAt).getTime(),
+        text: record.refinedText,
+        originalText: record.detectedText,
+        frameCount: record.frameCount,
+        duration: 0,
+        timestamp: new Date(record.createdAt),
+      }));
+
+      setHistory(entries);
+    } catch (err) {
+      setErrorMessage(
+        err instanceof Error ? err.message : "Failed to load history",
+      );
+    }
+  }, [patientId, serverUrl]);
+
   useEffect(() => {
-    const loadHistory = async () => {
-      try {
-        const response = patientId
-          ? await api.getPatientHistory(patientId)
-          : await api.getHistory(50);
+    void loadHistory();
+  }, [loadHistory]);
 
-        const entries: HistoryEntry[] = response.data.map((record) => ({
-          id: new Date(record.createdAt).getTime(),
-          text: record.refinedText,
-          originalText: record.detectedText,
-          frameCount: record.frameCount,
-          duration: 0,
-          timestamp: new Date(record.createdAt),
-        }));
-
-        setHistory(entries);
-      } catch (err) {
-        console.error("[v0] Failed to load history:", err);
-      }
-    };
-
-    loadHistory();
-  }, [patientId]);
-
-  // Fetch status periodically
   useEffect(() => {
-    fetchServerStatus();
-    const interval = setInterval(fetchServerStatus, 30000);
+    void fetchServerStatus();
+    const interval = setInterval(() => {
+      void fetchServerStatus();
+    }, 30000);
+
     return () => clearInterval(interval);
   }, [fetchServerStatus]);
 
-  // WebSocket handlers
   const handleAlphabetReceived = useCallback(
     (alphabet: string) => {
-      setStreamBuffer((prev) => prev + alphabet);
-      streamBufferRef[1]((prev) => prev + alphabet);
+      if (!alphabet) return;
+
+      setErrorMessage(null);
+      setStreamBuffer((prev) => {
+        const nextBuffer = `${prev}${alphabet}`;
+        streamBufferRef.current = nextBuffer;
+        return nextBuffer;
+      });
     },
-    [streamBufferRef],
+    [],
   );
 
   const handleFinalReceived = useCallback(
@@ -104,7 +103,7 @@ export default function HandSignDetectionPage() {
       text: string,
       metadata: { originalText: string; frameCount: number; duration: number },
     ) => {
-      const originalText = metadata.originalText || streamBufferRef[0];
+      const originalText = metadata.originalText || streamBufferRef.current;
 
       const newEntry: HistoryEntry = {
         id: Date.now(),
@@ -117,8 +116,9 @@ export default function HandSignDetectionPage() {
 
       setHistory((prev) => [newEntry, ...prev]);
       setStreamBuffer("");
-      streamBufferRef[1]("");
+      streamBufferRef.current = "";
       setIsProcessing(false);
+      setErrorMessage(null);
 
       if (patientId) {
         setIsSavingHistory(true);
@@ -136,15 +136,20 @@ export default function HandSignDetectionPage() {
         }
       }
     },
-    [streamBufferRef, patientId],
+    [patientId],
   );
 
   const handleError = useCallback((message: string) => {
-    console.error("[v0] WebSocket error:", message);
+    setErrorMessage(message);
     setIsProcessing(false);
   }, []);
 
-  // Initialize WebSocket
+  const handleConnectionChange = useCallback((isConnected: boolean) => {
+    if (!isConnected) {
+      setIsProcessing(false);
+    }
+  }, []);
+
   const {
     isConnected,
     latency,
@@ -159,8 +164,13 @@ export default function HandSignDetectionPage() {
     patientId: patientId || undefined,
     onAlphabetReceived: handleAlphabetReceived,
     onFinalReceived: handleFinalReceived,
+    onConnectionChange: handleConnectionChange,
     onError: handleError,
   });
+
+  useEffect(() => {
+    setErrorMessage(error);
+  }, [error]);
 
   const handleFrame = useCallback(
     (imageData: string) => {
@@ -181,8 +191,7 @@ export default function HandSignDetectionPage() {
   const latest = history[0] ?? null;
 
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Header */}
+    <div className="min-h-screen flex flex-col bg-background text-foreground">
       <header className="sticky top-0 z-50 glass-card border-b border-border/50">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
@@ -221,23 +230,37 @@ export default function HandSignDetectionPage() {
               </button>
             </div>
           </div>
+
+          {errorMessage && (
+            <div className="mt-4 flex items-start gap-3 rounded-2xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <div className="flex-1">
+                <p className="font-medium">Connection issue</p>
+                <p className="text-destructive/80">{errorMessage}</p>
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
       <main className="flex-1 container mx-auto px-4 py-6">
         <div className="grid gap-6 lg:grid-cols-2">
-          {/* Left Column - Camera */}
           <div className="space-y-6">
             <CameraPanel
               onFrame={handleFrame}
               onStop={handleStop}
               isConnected={isConnected}
+              isProcessing={isProcessing}
             />
           </div>
 
-          {/* Right Column - Translation */}
           <div className="space-y-6">
-            <LiveTranslation streamBuffer={streamBuffer} />
+            <LiveTranslation
+              streamBuffer={streamBuffer}
+              isConnected={isConnected}
+              isProcessing={isProcessing}
+              error={errorMessage}
+            />
 
             <FinalResult
               latest={latest}
@@ -250,7 +273,6 @@ export default function HandSignDetectionPage() {
         </div>
       </main>
 
-      {/* Settings Dialog */}
       <SettingsDialog
         open={showSettings}
         onOpenChange={setShowSettings}

@@ -44,16 +44,22 @@ export interface SessionInfo {
   uptime: number;
 }
 
+const DEFAULT_HTTP_BASE_URL =
+  import.meta.env.VITE_BACKEND_HTTP_URL ?? "http://localhost:8000";
+
 class ApiClient {
   private baseUrl: string;
 
-  constructor(baseUrl: string = "http://localhost:8000") {
-    this.baseUrl = baseUrl.replace(/\/$/, ""); // Remove trailing slash
+  constructor(baseUrl: string = DEFAULT_HTTP_BASE_URL) {
+    this.baseUrl = this.normalizeBaseUrl(baseUrl);
   }
 
   setBaseUrl(url: string) {
-    // Convert ws:// to http:// for REST calls
-    this.baseUrl = url
+    this.baseUrl = this.normalizeBaseUrl(url);
+  }
+
+  private normalizeBaseUrl(url: string) {
+    return url
       .replace(/^ws:/, "http:")
       .replace(/^wss:/, "https:")
       .replace(/\/$/, "");
@@ -64,21 +70,32 @@ class ApiClient {
     options: RequestInit = {}
   ): Promise<T> {
     const url = `${this.baseUrl}/api${endpoint}`;
+    const hasBody = options.body !== undefined;
     
     const response = await fetch(url, {
       ...options,
       headers: {
-        "Content-Type": "application/json",
+        ...(hasBody ? { "Content-Type": "application/json" } : {}),
+        Accept: "application/json",
         ...options.headers,
       },
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.error || `HTTP ${response.status}`);
+      const fallback = `HTTP ${response.status}`;
+      const errorBody = await response
+        .json()
+        .catch(async () => ({ message: await response.text().catch(() => fallback) }));
+
+      const message =
+        (errorBody as { error?: string; message?: string }).error ??
+        (errorBody as { error?: string; message?: string }).message ??
+        fallback;
+
+      throw new Error(message);
     }
 
-    return response.json();
+    return response.json() as Promise<T>;
   }
 
   // ─────────────────────────────────────────────
@@ -119,7 +136,9 @@ class ApiClient {
     total: number;
     data: HistoryRecord[];
   }> {
-    return this.request(`/history?limit=${limit}`);
+    return this.request<{ total: number; data: HistoryRecord[] }>(
+      `/history?limit=${limit}`,
+    );
   }
 
   async getPatientHistory(patientName: string): Promise<{
@@ -127,7 +146,11 @@ class ApiClient {
     total: number;
     data: HistoryRecord[];
   }> {
-    return this.request(`/history/${encodeURIComponent(patientName)}`);
+    return this.request<{
+      patientName: string;
+      total: number;
+      data: HistoryRecord[];
+    }>(`/history/${encodeURIComponent(patientName)}`);
   }
 
   async saveHistory(params: {
@@ -145,9 +168,12 @@ class ApiClient {
   async deletePatientHistory(
     patientId: string
   ): Promise<{ message: string; deleted: number }> {
-    return this.request(`/history/${encodeURIComponent(patientId)}`, {
+    return this.request<{ message: string; deleted: number }>(
+      `/history/${encodeURIComponent(patientId)}`,
+      {
       method: "DELETE",
-    });
+      },
+    );
   }
 
   // ─────────────────────────────────────────────
@@ -155,7 +181,9 @@ class ApiClient {
   // ─────────────────────────────────────────────
 
   async getSessions(): Promise<{ count: number; sessions: SessionInfo[] }> {
-    return this.request("/sessions");
+    return this.request<{ count: number; sessions: SessionInfo[] }>(
+      "/sessions",
+    );
   }
 }
 

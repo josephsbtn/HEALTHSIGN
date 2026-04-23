@@ -5,7 +5,7 @@ import type { ServerStatus } from "@/lib/api";
 
 interface StatusBarProps {
   isConnected: boolean;
-  latency: number;
+  latency: number | null;
   messagesReceived: number;
   reconnectCount: number;
   error: string | null;
@@ -18,6 +18,9 @@ interface StatusBarProps {
 export function StatusBar({
   isConnected,
   latency,
+  messagesReceived,
+  reconnectCount,
+  error,
   onReconnect,
   serverStatus,
   isLoadingStatus,
@@ -25,6 +28,26 @@ export function StatusBar({
 }: StatusBarProps) {
   return (
     <div className="flex items-center gap-2">
+      {messagesReceived > 0 && (
+        <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted text-xs text-muted-foreground">
+          <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+          {messagesReceived} frames
+        </div>
+      )}
+
+      {reconnectCount > 0 && (
+        <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted text-xs text-muted-foreground">
+          <RefreshCw className="w-3 h-3" />
+          Reconnected {reconnectCount}x
+        </div>
+      )}
+
+      {error && (
+        <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-destructive/10 text-destructive text-xs font-medium max-w-[220px] truncate">
+          {error}
+        </div>
+      )}
+
       {/* Saving indicator */}
       {isSavingHistory && (
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-secondary/20 text-secondary text-xs font-medium">
@@ -65,7 +88,11 @@ export function StatusBar({
             : "bg-red-500/10 text-red-600 hover:bg-red-500/20"
           }
         `}
-        title={isConnected ? `Connected (${latency}ms)` : "Click to reconnect"}
+          title={
+            isConnected
+              ? `Connected${latency !== null ? ` (${latency}ms)` : ""}`
+              : "Click to reconnect"
+          }
       >
         {isConnected ? (
           <>
@@ -75,8 +102,8 @@ export function StatusBar({
             </span>
             <Wifi className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Connected</span>
-            {latency > 0 && (
-              <span className="text-green-600/70">{latency}ms</span>
+              {latency !== null && latency > 0 && (
+                <span className="text-green-600/70">{latency}ms</span>
             )}
           </>
         ) : (

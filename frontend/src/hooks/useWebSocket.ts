@@ -1,45 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface StreamResponse {
-  type: "stream";
-  alphabet: string;
-  timestamp?: string;
-}
-
-interface FinalResponse {
-  type: "final";
-  text: string;
-  metadata: {
-    originalText: string;
-    frameCount: number;
-    duration: number;
-  };
-  timestamp?: string;
-}
-
-interface ErrorResponse {
-  type: "error";
-  message: string;
-  details?: string;
-  timestamp?: string;
-}
-
-type ServerMessage = StreamResponse | FinalResponse | ErrorResponse;
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { FinalMessage, ServerMessage } from "@/lib/types";
 
 export interface UseWebSocketOptions {
-  /** URL ws:// or wss:// to backend, e.g., "ws://localhost:8000" */
   serverUrl?: string;
-  /** Patient ID sent via connect message after connection */
   patientId?: string;
-  /** Called for each new alphabet from stream */
   onAlphabetReceived?: (alphabet: string) => void;
-  /** Called when final refined text is received */
-  onFinalReceived?: (text: string, meta: FinalResponse["metadata"]) => void;
-  /** Called when error from server */
+  onFinalReceived?: (text: string, meta: FinalMessage["metadata"]) => void;
+  onConnectionChange?: (isConnected: boolean) => void;
   onError?: (message: string) => void;
 }
 
@@ -52,21 +21,89 @@ export interface UseWebSocketReturn {
   sendFrame: (frame: string) => void;
   sendEnd: () => void;
   reconnect: () => void;
+  disconnect: () => void;
 }
 
-// ─── Hook ─────────────────────────────────────────────────────────────────────
+const DEFAULT_RECONNECT_DELAY_MS = 1000;
+const MAX_RECONNECT_DELAY_MS = 10000;
+const FRAME_THROTTLE_MS = 100;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function parseMessage(rawData: unknown): ServerMessage | null {
+  if (typeof rawData !== "string") {
+    return null;
+  }
+
+  try {
+    const data: unknown = JSON.parse(rawData);
+    if (!isRecord(data) || typeof data.type !== "string") {
+      return null;
+    }
+
+    if (data.type === "stream" && typeof data.alphabet === "string") {
+      return {
+        type: "stream",
+        alphabet: data.alphabet,
+        timestamp: typeof data.timestamp === "string" ? data.timestamp : undefined,
+      };
+    }
+
+    if (
+      data.type === "final" &&
+      typeof data.text === "string" &&
+      isRecord(data.metadata) &&
+      typeof data.metadata.originalText === "string" &&
+      typeof data.metadata.frameCount === "number" &&
+      typeof data.metadata.duration === "number"
+    ) {
+      return {
+        type: "final",
+        text: data.text,
+        metadata: data.metadata as FinalMessage["metadata"],
+        timestamp: typeof data.timestamp === "string" ? data.timestamp : undefined,
+      };
+    }
+
+    if (data.type === "error" && typeof data.message === "string") {
+      return {
+        type: "error",
+        message: data.message,
+        details: typeof data.details === "string" ? data.details : undefined,
+        timestamp: typeof data.timestamp === "string" ? data.timestamp : undefined,
+      };
+    }
+
+    if (typeof data.alphabet === "string") {
+      return {
+        type: "stream",
+        alphabet: data.alphabet,
+        timestamp: typeof data.timestamp === "string" ? data.timestamp : undefined,
+      };
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 export function useWebSocket({
   serverUrl = "ws://localhost:8000",
   patientId,
   onAlphabetReceived,
   onFinalReceived,
+  onConnectionChange,
   onError,
 }: UseWebSocketOptions = {}): UseWebSocketReturn {
   const wsRef = useRef<WebSocket | null>(null);
-  const pingTimestampRef = useRef<number | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const frameThrottleRef = useRef<number>(0);
+  const frameThrottleRef = useRef(0);
+  const pingTimestampRef = useRef<number | null>(null);
+  const reconnectAttemptRef = useRef(0);
+  const shouldReconnectRef = useRef(true);
 
   const [isConnected, setIsConnected] = useState(false);
   const [latency, setLatency] = useState<number | null>(null);
@@ -74,119 +111,189 @@ export function useWebSocket({
   const [reconnectCount, setReconnectCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  // Store callbacks in refs to avoid reconnection on callback changes
   const onAlphabetReceivedRef = useRef(onAlphabetReceived);
   const onFinalReceivedRef = useRef(onFinalReceived);
+  const onConnectionChangeRef = useRef(onConnectionChange);
   const onErrorRef = useRef(onError);
 
   useEffect(() => {
     onAlphabetReceivedRef.current = onAlphabetReceived;
+  }, [onAlphabetReceived]);
+
+  useEffect(() => {
     onFinalReceivedRef.current = onFinalReceived;
+  }, [onFinalReceived]);
+
+  useEffect(() => {
+    onConnectionChangeRef.current = onConnectionChange;
+  }, [onConnectionChange]);
+
+  useEffect(() => {
     onErrorRef.current = onError;
-  }, [onAlphabetReceived, onFinalReceived, onError]);
+  }, [onError]);
+
+  const clearReconnectTimer = useCallback(() => {
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+  }, []);
+
+  const disconnect = useCallback(() => {
+    shouldReconnectRef.current = false;
+    clearReconnectTimer();
+
+    const socket = wsRef.current;
+    wsRef.current = null;
+
+    if (socket && socket.readyState !== WebSocket.CLOSED) {
+      socket.close(1000, "Disconnected by client");
+    }
+  }, [clearReconnectTimer]);
 
   const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+    if (!serverUrl) {
+      const message = "WebSocket URL is not configured";
+      setError(message);
+      onErrorRef.current?.(message);
+      return;
+    }
+
+    const currentSocket = wsRef.current;
+    if (
+      currentSocket?.readyState === WebSocket.OPEN ||
+      currentSocket?.readyState === WebSocket.CONNECTING
+    ) {
+      return;
+    }
+
+    shouldReconnectRef.current = true;
 
     try {
-      const ws = new WebSocket(serverUrl);
-      wsRef.current = ws;
+      const socket = new WebSocket(serverUrl);
+      wsRef.current = socket;
 
-      ws.onopen = () => {
+      socket.onopen = () => {
+        reconnectAttemptRef.current = 0;
         setIsConnected(true);
         setError(null);
+        onConnectionChangeRef.current?.(true);
 
-        // Send connect message with patientId if provided
         if (patientId) {
-          ws.send(JSON.stringify({ type: "connect", patientId }));
+          socket.send(JSON.stringify({ type: "connect", patientId }));
         }
 
-        // Measure latency with manual ping
         pingTimestampRef.current = Date.now();
-        ws.send(JSON.stringify({ type: "ping" }));
+        socket.send(JSON.stringify({ type: "ping" }));
       };
 
-      ws.onmessage = (event) => {
-        // Calculate latency from round-trip ping
+      socket.onmessage = (event) => {
+        setMessagesReceived((current) => current + 1);
+
+        const payload = parseMessage(event.data);
+        if (!payload) {
+          if (pingTimestampRef.current !== null) {
+            setLatency(Date.now() - pingTimestampRef.current);
+            pingTimestampRef.current = null;
+          }
+          return;
+        }
+
+        if (payload.type === "stream") {
+          onAlphabetReceivedRef.current?.(payload.alphabet);
+        } else if (payload.type === "final") {
+          onFinalReceivedRef.current?.(payload.text, payload.metadata);
+        } else if (payload.type === "error") {
+          setError(payload.message);
+          onErrorRef.current?.(payload.message);
+        }
+
         if (pingTimestampRef.current !== null) {
           setLatency(Date.now() - pingTimestampRef.current);
           pingTimestampRef.current = null;
         }
-
-        setMessagesReceived((n) => n + 1);
-
-        try {
-          const data: ServerMessage = JSON.parse(event.data as string);
-
-          if (data.type === "stream") {
-            onAlphabetReceivedRef.current?.(data.alphabet);
-          } else if (data.type === "final") {
-            onFinalReceivedRef.current?.(data.text, data.metadata);
-          } else if (data.type === "error") {
-            setError(data.message);
-            onErrorRef.current?.(data.message);
-          }
-        } catch {
-          // Ignore non-JSON messages (e.g., pong from server)
-        }
       };
 
-      ws.onerror = () => {
-        setError("WebSocket connection error");
-        onErrorRef.current?.("WebSocket connection error");
+      socket.onerror = () => {
+        const message = "WebSocket connection error";
+        setError(message);
+        onErrorRef.current?.(message);
       };
 
-      ws.onclose = (event) => {
+      socket.onclose = (event) => {
         setIsConnected(false);
+        onConnectionChangeRef.current?.(false);
         wsRef.current = null;
 
-        if (!event.wasClean) {
-          // Auto-reconnect after 3 seconds
+        if (!event.wasClean && shouldReconnectRef.current) {
+          const attempt = reconnectAttemptRef.current + 1;
+          reconnectAttemptRef.current = attempt;
+          const delay = Math.min(
+            DEFAULT_RECONNECT_DELAY_MS * 2 ** (attempt - 1),
+            MAX_RECONNECT_DELAY_MS,
+          );
+
           reconnectTimerRef.current = setTimeout(() => {
-            setReconnectCount((n) => n + 1);
+            setReconnectCount((current) => current + 1);
             connect();
-          }, 3000);
+          }, delay);
         }
       };
-    } catch (err) {
-      setError("Failed to create WebSocket connection");
-      onErrorRef.current?.("Failed to create WebSocket connection");
+    } catch {
+      const message = "Failed to create WebSocket connection";
+      setError(message);
+      onErrorRef.current?.(message);
     }
-  }, [serverUrl, patientId]);
+  }, [patientId, serverUrl]);
 
   useEffect(() => {
+    shouldReconnectRef.current = true;
     connect();
-    return () => {
-      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-      wsRef.current?.close(1000, "Component unmounted");
-    };
-  }, [connect]);
 
-  /** Send a single frame to backend (throttled to ~8-10 FPS) */
+    return () => {
+      shouldReconnectRef.current = false;
+      clearReconnectTimer();
+      wsRef.current?.close(1000, "Component unmounted");
+      wsRef.current = null;
+    };
+  }, [connect, clearReconnectTimer]);
+
   const sendFrame = useCallback((frame: string) => {
-    if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+    if (wsRef.current?.readyState !== WebSocket.OPEN) {
+      return;
+    }
 
     const now = Date.now();
-    // Throttle to max 10 FPS (100ms between frames)
-    if (now - frameThrottleRef.current < 100) return;
+    if (now - frameThrottleRef.current < FRAME_THROTTLE_MS) {
+      return;
+    }
+
     frameThrottleRef.current = now;
-
-    wsRef.current.send(JSON.stringify({ type: "frame", frame }));
+    wsRef.current.send(
+      JSON.stringify({
+        type: "frame",
+        frame,
+        timestamp: now,
+      }),
+    );
   }, []);
 
-  /** Notify backend that stream is finished */
   const sendEnd = useCallback(() => {
-    if (wsRef.current?.readyState !== WebSocket.OPEN) return;
-    wsRef.current.send(JSON.stringify({ type: "end" }));
+    if (wsRef.current?.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    wsRef.current.send(JSON.stringify({ type: "end", timestamp: Date.now() }));
   }, []);
 
-  /** Manual reconnect */
   const reconnect = useCallback(() => {
-    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-    wsRef.current?.close();
-    setReconnectCount((n) => n + 1);
+    clearReconnectTimer();
+    reconnectAttemptRef.current = 0;
+    setReconnectCount((current) => current + 1);
+    disconnect();
+    shouldReconnectRef.current = true;
     connect();
-  }, [connect]);
+  }, [clearReconnectTimer, connect, disconnect]);
 
   return {
     isConnected,
@@ -197,5 +304,6 @@ export function useWebSocket({
     sendFrame,
     sendEnd,
     reconnect,
+    disconnect,
   };
 }

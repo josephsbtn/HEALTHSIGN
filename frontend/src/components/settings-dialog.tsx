@@ -77,7 +77,7 @@ export function SettingsDialog({
               <div className="space-y-2">
                 <label className="text-sm font-medium text-foreground flex items-center gap-2">
                   <Wifi className="w-4 h-4 text-muted-foreground" />
-                  WebSocket Server URL
+                  Backend WebSocket URL
                 </label>
                 <Input
                   type="text"

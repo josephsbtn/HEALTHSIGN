@@ -2,7 +2,7 @@
 
 import { MessageSquare, Volume2, Loader2, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import type { HistoryEntry } from "@/app/page";
+import type { HistoryEntry } from "@/lib/types";
 
 interface FinalResultProps {
   latest: HistoryEntry | null;
