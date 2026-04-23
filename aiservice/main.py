@@ -2,6 +2,7 @@ import base64
 import os
 from io import BytesIO
 from typing import Any
+import logging
 
 import torch.serialization
 from fastapi import FastAPI, HTTPException
@@ -12,12 +13,18 @@ from ultralytics.nn.tasks import DetectionModel
 import torch
 import torch.nn
 
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.getenv("MODEL_PATH", "models/best.pt")
 if not os.path.isabs(MODEL_PATH):
     MODEL_PATH = os.path.join(BASE_DIR, MODEL_PATH)
-CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.25"))
+# Increased default confidence from 0.25 to 0.45 for better accuracy
+CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.45"))
+# Minimum confidence to return a result (filter weak detections)
+MIN_CONFIDENCE = float(os.getenv("MIN_CONFIDENCE", "0.50"))
 
 app = FastAPI(title="HEALTHSIGN AI Service", version="1.0.0")
 
@@ -64,34 +71,51 @@ class SignDetector:
 
     def detect_one_alphabet(self, image: Image.Image) -> str | None:
         if self.model is None:
+            logger.error("Model is not loaded")
             return None
 
-        results = self.model.predict(source=image, conf=CONFIDENCE_THRESHOLD, verbose=False)
-        if not results:
+        try:
+            results = self.model.predict(source=image, conf=CONFIDENCE_THRESHOLD, verbose=False)
+            if not results:
+                logger.debug("No detection results")
+                return None
+
+            best_label: str | None = None
+            best_conf: float = 0.0
+            detections_found = []
+
+            for result in results:
+                boxes = result.boxes
+                names = result.names
+                if boxes is None or len(boxes) == 0:
+                    continue
+
+                for box in boxes:
+                    conf = float(box.conf[0].item())
+                    cls_idx = int(box.cls[0].item())
+                    label = str(names.get(cls_idx, cls_idx)) if isinstance(names, dict) else str(cls_idx)
+                    
+                    detections_found.append({"label": label, "conf": conf})
+
+                    # Only consider detections above MIN_CONFIDENCE
+                    if conf >= MIN_CONFIDENCE and conf > best_conf:
+                        best_conf = conf
+                        best_label = label
+
+            # Log all detections for debugging
+            if detections_found:
+                logger.debug(f"All detections: {detections_found}")
+            
+            if best_label is None:
+                logger.debug(f"No detections with confidence >= {MIN_CONFIDENCE}")
+                return None
+
+            logger.info(f"Detected: {best_label} (confidence: {best_conf:.3f})")
+            return best_label
+            
+        except Exception as exc:
+            logger.error(f"Error during detection: {exc}")
             return None
-
-        best_label: str | None = None
-        best_conf: float = 0.0
-
-        for result in results:
-            boxes = result.boxes
-            names = result.names
-            if boxes is None or len(boxes) == 0:
-                continue
-
-            for box in boxes:
-                conf = float(box.conf[0].item())
-                cls_idx = int(box.cls[0].item())
-                label = str(names.get(cls_idx, cls_idx)) if isinstance(names, dict) else str(cls_idx)
-
-                if conf > best_conf:
-                    best_conf = conf
-                    best_label = label
-
-        if best_label is None:
-            return None
-
-        return best_label
 
 
 detector = SignDetector(MODEL_PATH)
@@ -119,3 +143,56 @@ def detect(payload: DetectRequest) -> dict[str, str | None]:
 
     alphabet = detector.detect_one_alphabet(image)
     return {"alphabet": alphabet}
+
+
+@app.post("/detect-debug")
+def detect_debug(payload: DetectRequest) -> dict[str, Any]:
+    """Debug endpoint that returns all detections with details"""
+    if detector.model is None:
+        raise HTTPException(status_code=503, detail=f"Model failed to load: {detector.model_load_error}")
+
+    try:
+        image = detector.decode_frame(payload.frame)
+    except (ValueError, UnidentifiedImageError, OSError) as exc:
+        raise HTTPException(status_code=400, detail=f"Failed to decode frame: {exc}") from exc
+
+    try:
+        results = detector.model.predict(source=image, conf=CONFIDENCE_THRESHOLD, verbose=False)
+        all_detections = []
+        
+        for result in results:
+            boxes = result.boxes
+            names = result.names
+            if boxes is None or len(boxes) == 0:
+                continue
+
+            for box in boxes:
+                conf = float(box.conf[0].item())
+                cls_idx = int(box.cls[0].item())
+                label = str(names.get(cls_idx, cls_idx)) if isinstance(names, dict) else str(cls_idx)
+                
+                # Get bounding box coordinates
+                x1, y1, x2, y2 = [float(x) for x in box.xyxy[0].tolist()]
+                
+                all_detections.append({
+                    "label": label,
+                    "confidence": round(conf, 4),
+                    "bbox": {"x1": x1, "y1": y1, "x2": x2, "y2": y2},
+                    "passes_min_threshold": conf >= MIN_CONFIDENCE
+                })
+        
+        # Sort by confidence
+        all_detections.sort(key=lambda x: x["confidence"], reverse=True)
+        
+        best_detection = next((d for d in all_detections if d["passes_min_threshold"]), None)
+        
+        return {
+            "best_detection": best_detection,
+            "all_detections": all_detections,
+            "detection_count": len(all_detections),
+            "confidence_threshold": CONFIDENCE_THRESHOLD,
+            "min_confidence": MIN_CONFIDENCE
+        }
+    except Exception as exc:
+        logger.error(f"Error in debug detection: {exc}")
+        raise HTTPException(status_code=500, detail=f"Detection error: {exc}")

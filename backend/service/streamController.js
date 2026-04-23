@@ -23,6 +23,9 @@ export class StreamSession {
     this.isActive = true;
     this.finalizationInProgress = false; // Guard against double finalization
     this.startTime = Date.now();
+    this.lastAlphabet = "";
+    this.lastAlphabetCount = 0;
+    this.stableAlphabet = "";
     logger.debug(
       `Stream session created for client: ${clientId}, patient: ${patientId}`,
     );
@@ -127,6 +130,9 @@ export class StreamSession {
   resetBuffer() {
     this.buffer = "";
     this.frameCount = 0;
+    this.lastAlphabet = "";
+    this.lastAlphabetCount = 0;
+    this.stableAlphabet = "";
   }
 
   close() {
@@ -217,13 +223,28 @@ const handleFrameMessage = async (ws, data, session) => {
 
   try {
     const result = await detectAlphabet(data.frame);
+    const alphabet = result.alphabet?.trim();
 
-    if (result.alphabet) {
-      session.buffer += result.alphabet;
-      session.frameCount++;
-      session.sendStreamResponse(result.alphabet);
+    if (alphabet) {
+      if (alphabet === session.lastAlphabet) {
+        session.lastAlphabetCount += 1;
+      } else {
+        session.lastAlphabet = alphabet;
+        session.lastAlphabetCount = 1;
+      }
+
+      if (session.lastAlphabetCount >= config.FRAME_STABILITY_THRESHOLD) {
+        if (session.stableAlphabet !== alphabet) {
+          session.buffer += alphabet;
+          session.frameCount += 1;
+          session.stableAlphabet = alphabet;
+          session.sendStreamResponse(alphabet);
+        }
+      }
     } else {
       logger.warn(`Empty alphabet from AI service for ${session.clientId}`);
+      session.lastAlphabet = "";
+      session.lastAlphabetCount = 0;
     }
 
     session.setStreamTimeout(() => {
@@ -234,10 +255,12 @@ const handleFrameMessage = async (ws, data, session) => {
   } catch (error) {
     logger.error(
       `Error detecting alphabet for ${session.clientId}:`,
-      error.message,
+      error?.message ?? error,
     );
     ws.send(
-      JSON.stringify(formatErrorResponse("AI service error", error.message)),
+      JSON.stringify(
+        formatErrorResponse("AI service error", error?.message ?? "Unknown error"),
+      ),
     );
   }
 };

@@ -55,6 +55,9 @@ export const config = {
   MOCK_AI_DELAY_MIN: getEnvNumber("MOCK_AI_DELAY_MIN", 50),
   MOCK_AI_DELAY_MAX: getEnvNumber("MOCK_AI_DELAY_MAX", 150),
 
+  // Detection stability
+  FRAME_STABILITY_THRESHOLD: getEnvNumber("FRAME_STABILITY_THRESHOLD", 2),
+
   // Buffer limits
   MAX_BUFFER_SIZE: getEnvNumber("MAX_BUFFER_SIZE", 10000),
   MAX_CONCURRENT_FRAMES: getEnvNumber("MAX_CONCURRENT_FRAMES", 100),

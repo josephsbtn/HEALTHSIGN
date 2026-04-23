@@ -49,16 +49,23 @@ export const detectAlphabetFromAPI = async (frame) => {
       { timeout: config.AI_SERVICE_TIMEOUT },
     );
 
-    if (!response.data || !response.data.alphabet) {
-      logger.warn("Invalid response from AI service, using mock");
-      return detectAlphabetMock(frame);
+    if (!response.data || typeof response.data.alphabet !== "string") {
+      const message = "Invalid response from AI service";
+      logger.warn(message, response.data);
+      if (config.USE_MOCK_AI) {
+        return detectAlphabetMock(frame);
+      }
+      throw new Error(message);
     }
 
     logger.debug("Detected alphabet from API:", response.data.alphabet);
     return response.data;
   } catch (error) {
-    logger.error("AI service error, falling back to mock", error.message);
-    return detectAlphabetMock(frame);
+    logger.error("AI service error", error?.message ?? error);
+    if (config.USE_MOCK_AI) {
+      return detectAlphabetMock(frame);
+    }
+    throw error;
   }
 };
 
@@ -81,7 +88,7 @@ export const detectAlphabet = async (frame) => {
     }
     return await detectAlphabetFromAPI(frame);
   } catch (error) {
-    logger.error("Unexpected error in detectAlphabet:", error.message);
+    logger.error("Unexpected error in detectAlphabet:", error?.message ?? error);
     return { alphabet: "" };
   }
 };
