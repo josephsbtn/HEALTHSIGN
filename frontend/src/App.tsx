@@ -198,6 +198,7 @@ export default function HandSignDetectionPage() {
   }, [isConnected, sendEnd]);
 
   const latest = history[0] ?? null;
+  const patientFirstName = patientId.trim().split(/\s+/)[0] || "friend";
 
   const handleStartExperience = useCallback(() => {
     setPatientNameInput(patientId);
@@ -227,6 +228,7 @@ export default function HandSignDetectionPage() {
     return (
       <div className="relative min-h-screen overflow-hidden bg-background text-foreground">
         <div className="absolute inset-0 bg-[linear-gradient(135deg,hsl(var(--background))_0%,hsl(var(--background))/0.96_50%,hsl(var(--muted))/0.85_100%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#6ddccd]/10 to-[#26a0c9]/10" />
 
         <div className="absolute inset-0 overflow-hidden opacity-90">
           <div className="absolute left-[-6rem] top-[-5rem] h-80 w-80 rounded-full border-2 border-dashed border-[#6ddccd]/45 bg-[#6ddccd]/8 blur-[1px]" />
@@ -362,6 +364,7 @@ export default function HandSignDetectionPage() {
   return (
     <div className="relative min-h-screen overflow-hidden bg-background text-foreground animate-fade-in-up">
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,hsl(var(--background))_0%,hsl(var(--background))/0.96_50%,hsl(var(--muted))/0.85_100%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#6ddccd]/10 to-[#26a0c9]/10" />
       <div className="pointer-events-none absolute inset-0 overflow-hidden opacity-90">
         <div className="absolute left-[-6rem] top-[-5rem] h-80 w-80 rounded-full border-2 border-dashed border-[#6ddccd]/45 bg-[#6ddccd]/8 blur-[1px]" />
         <div className="absolute right-[8%] top-[12%] h-64 w-64 rounded-full border border-[#26a0c9]/35 bg-[#26a0c9]/8" />
@@ -379,19 +382,22 @@ export default function HandSignDetectionPage() {
         </div>
 
         <div className="relative z-10 container mx-auto px-4 py-4">
-          <div className="flex flex-col items-center gap-4">
-            <div className="flex items-center gap-4 text-center">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="text-left">
               <div>
-                <h1 className="text-xl font-bold text-foreground">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#1d9e75]">
                   Hand Sign Detection
+                </p>
+                <h1 className="mt-1 text-2xl font-extrabold leading-tight text-foreground sm:text-3xl lg:text-4xl">
+                  Hello, {patientFirstName}!
                 </h1>
-                <p className="text-sm text-muted-foreground">
-                  Real-time communication for deaf patients
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Let&apos;s translate together.
                 </p>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-center gap-3">
+            <div className="flex flex-wrap items-center justify-start gap-3 lg:justify-end">
               <StatusBar
                 isConnected={isConnected}
                 latency={latency}
