@@ -48,23 +48,35 @@ function parseMessage(rawData: unknown): ServerMessage | null {
       return {
         type: "stream",
         alphabet: data.alphabet,
-        timestamp: typeof data.timestamp === "string" ? data.timestamp : undefined,
+        timestamp:
+          typeof data.timestamp === "string" ? data.timestamp : undefined,
       };
     }
 
     if (
       data.type === "final" &&
       typeof data.text === "string" &&
-      isRecord(data.metadata) &&
-      typeof data.metadata.originalText === "string" &&
-      typeof data.metadata.frameCount === "number" &&
-      typeof data.metadata.duration === "number"
+      isRecord(data.metadata)
     ) {
       return {
         type: "final",
         text: data.text,
-        metadata: data.metadata as FinalMessage["metadata"],
-        timestamp: typeof data.timestamp === "string" ? data.timestamp : undefined,
+        metadata: {
+          originalText:
+            typeof data.metadata.originalText === "string"
+              ? data.metadata.originalText
+              : "",
+          frameCount:
+            typeof data.metadata.frameCount === "number"
+              ? data.metadata.frameCount
+              : 0,
+          duration:
+            typeof data.metadata.duration === "number"
+              ? data.metadata.duration
+              : 0,
+        },
+        timestamp:
+          typeof data.timestamp === "string" ? data.timestamp : undefined,
       };
     }
 
@@ -73,7 +85,8 @@ function parseMessage(rawData: unknown): ServerMessage | null {
         type: "error",
         message: data.message,
         details: typeof data.details === "string" ? data.details : undefined,
-        timestamp: typeof data.timestamp === "string" ? data.timestamp : undefined,
+        timestamp:
+          typeof data.timestamp === "string" ? data.timestamp : undefined,
       };
     }
 
@@ -81,7 +94,8 @@ function parseMessage(rawData: unknown): ServerMessage | null {
       return {
         type: "stream",
         alphabet: data.alphabet,
-        timestamp: typeof data.timestamp === "string" ? data.timestamp : undefined,
+        timestamp:
+          typeof data.timestamp === "string" ? data.timestamp : undefined,
       };
     }
 

@@ -184,21 +184,21 @@ router.get(
 );
 
 /**
- * DELETE /api/history/:patientId
- * Hapus seluruh riwayat milik pasien berdasarkan patientId.
+ * DELETE /api/history/:patientName
+ * Hapus seluruh riwayat milik pasien berdasarkan patientName.
  *
  * Response: { deleted: number }
  */
 router.delete(
-  "/history/:patientId",
+  "/history/:patientName",
   asyncHandler(async (req, res) => {
-    const { patientId } = req.params;
+    const { patientName } = req.params;
 
-    if (!patientId) {
-      return res.status(400).json({ error: "patientId is required" });
+    if (!patientName) {
+      return res.status(400).json({ error: "patientName is required" });
     }
 
-    const result = await deleteHistoryByPatient(patientId);
+    const result = await deleteHistoryByPatient(patientName);
     res.json({ message: "History deleted", deleted: result.deletedCount });
   }),
 );

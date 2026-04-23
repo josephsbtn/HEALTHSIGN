@@ -2,14 +2,10 @@ import mongoose from "mongoose";
 
 const HistorySchema = new mongoose.Schema(
   {
-    id: {
-      type: mongoose.Types.ObjectId,
-      default: mongoose.Types.ObjectId,
-      index: true,
-    },
     patientName: {
       type: String,
       required: true,
+      index: true,
     },
     detectedText: {
       type: String,
@@ -37,7 +33,7 @@ const HistorySchema = new mongoose.Schema(
 );
 
 // Ensure patient history is ordered by date
-HistorySchema.index({ patientId: 1, createdAt: -1 });
+HistorySchema.index({ patientName: 1, createdAt: -1 });
 
 const History = mongoose.model("History", HistorySchema);
 

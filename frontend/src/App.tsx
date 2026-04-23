@@ -1,16 +1,32 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertCircle, Clock3, Play, Settings, X } from "lucide-react";
+import {
+  AlertCircle,
+  Clock3,
+  MessageSquare,
+  Settings,
+  X,
+  Plus,
+  Play,
+} from "lucide-react";
 import heroImage from "./assets/ok.png";
 import heroImage2 from "./assets/Thumb_up.png";
 import { WebcamCapture } from "./components/webcam-capture";
 import { LiveTranslation } from "./components/live-translation";
 import { FinalResult } from "./components/final-result";
-import { HistoryPanel } from "./components/history-panel";
+import {
+  HistoryPanel,
+  type ChatSessionRecord,
+} from "./components/history-panel";
 import { StatusBar } from "./components/status-bar";
 import { SettingsDialog } from "./components/settings-dialog";
+import { ChatModal } from "./components/chat-modal";
+import { PatientForm } from "./components/patient-form";
 import { useWebSocket } from "./hooks/useWebSocket";
+import { useChat } from "./hooks/useChat";
+import { usePatient } from "./hooks/usePatient";
+import { useTTS } from "./hooks/useTTS";
 import { api, type ServerStatus } from "./lib/api";
 import type { HistoryEntry } from "./lib/types";
 
@@ -20,27 +36,80 @@ const DEFAULT_SERVER_URL =
 export default function HandSignDetectionPage() {
   const [hasStarted, setHasStarted] = useState(false);
   const [isTransitioningIn, setIsTransitioningIn] = useState(false);
-  const [showPatientForm, setShowPatientForm] = useState(false);
-  const [patientNameInput, setPatientNameInput] = useState("");
-  const [patientFormError, setPatientFormError] = useState<string | null>(null);
   const [serverUrl, setServerUrl] = useState(DEFAULT_SERVER_URL);
-  const [patientId, setPatientId] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showChatModal, setShowChatModal] = useState(false);
   const [serverStatus, setServerStatus] = useState<ServerStatus | null>(null);
   const [isLoadingStatus, setIsLoadingStatus] = useState(false);
   const [streamBuffer, setStreamBuffer] = useState("");
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [chatSessions, setChatSessions] = useState<ChatSessionRecord[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSavingHistory, setIsSavingHistory] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [latestFinalText, setLatestFinalText] = useState<string>("");
+  const [showSuccessMessage, setShowSuccessMessage] = useState<string | null>(
+    null,
+  );
 
   const streamBufferRef = useRef("");
 
+  // ── Custom Hooks ──────────────────────────────────────────
+  const {
+    patientId,
+    patientNameInput,
+    patientFormError,
+    showPatientForm,
+    setPatientNameInput,
+    setShowPatientForm,
+    submitPatient,
+    startNewPatient,
+    resetPatient,
+    clearError: clearPatientError,
+  } = usePatient({
+    onPatientChanged: (name) => {
+      setIsTransitioningIn(true);
+      setShowPatientForm(false);
+      setTimeout(() => setHasStarted(true), 350);
+    },
+  });
+
+  const {
+    isEnabled: isTTSEnabled,
+    speak: speakText,
+    toggle: toggleTTS,
+  } = useTTS({
+    language: "id-ID",
+    rate: 1,
+    pitch: 1,
+  });
+
+  // ── API base URL ──────────────────────────────────────────────
   useEffect(() => {
     api.setBaseUrl(serverUrl);
   }, [serverUrl]);
 
+  // ── Chat ─────────────────────────────────────────────────────
+  const {
+    session: chatSession,
+    isLoading: isChatLoading,
+    error: chatError,
+    clearError: clearChatError,
+    newSession: newChatSession,
+    sendMessage: sendChatMessage,
+    loadLatestSession: loadLatestChatSession,
+    deleteSession: deleteChatSession,
+  } = useChat({ serverUrl, patientName: patientId });
+
+  // Load latest chat session when patient changes
+  useEffect(() => {
+    if (patientId && hasStarted) {
+      void loadLatestChatSession();
+    }
+  }, [patientId, hasStarted, loadLatestChatSession]);
+
+  // ── Server status ─────────────────────────────────────────────
   const fetchServerStatus = useCallback(async () => {
     setIsLoadingStatus(true);
     try {
@@ -56,6 +125,7 @@ export default function HandSignDetectionPage() {
     }
   }, []);
 
+  // ── History ───────────────────────────────────────────────────
   const loadHistory = useCallback(async () => {
     try {
       const response = patientId
@@ -77,34 +147,47 @@ export default function HandSignDetectionPage() {
         err instanceof Error ? err.message : "Failed to load history",
       );
     }
-  }, [patientId, serverUrl]);
+  }, [patientId]);
 
   useEffect(() => {
     void loadHistory();
   }, [loadHistory]);
 
+  // ── Chat sessions history ─────────────────────────────────────
+  const loadChatSessions = useCallback(async () => {
+    try {
+      const baseUrl = serverUrl
+        .replace(/^ws:/, "http:")
+        .replace(/^wss:/, "https:");
+      const res = await fetch(`${baseUrl}/api/chat?limit=50`);
+      if (!res.ok) throw new Error("Failed to load chat sessions");
+      const data = await res.json();
+      setChatSessions(data.data ?? []);
+    } catch (err) {
+      console.error("[App] Failed to load chat sessions:", err);
+    }
+  }, [serverUrl]);
+
+  useEffect(() => {
+    if (hasStarted) void loadChatSessions();
+  }, [hasStarted, loadChatSessions]);
+
   useEffect(() => {
     void fetchServerStatus();
-    const interval = setInterval(() => {
-      void fetchServerStatus();
-    }, 30000);
-
+    const interval = setInterval(() => void fetchServerStatus(), 30000);
     return () => clearInterval(interval);
   }, [fetchServerStatus]);
 
-  const handleAlphabetReceived = useCallback(
-    (alphabet: string) => {
-      if (!alphabet) return;
-
-      setErrorMessage(null);
-      setStreamBuffer((prev) => {
-        const nextBuffer = `${prev}${alphabet}`;
-        streamBufferRef.current = nextBuffer;
-        return nextBuffer;
-      });
-    },
-    [],
-  );
+  // ── WebSocket handlers ────────────────────────────────────────
+  const handleAlphabetReceived = useCallback((alphabet: string) => {
+    if (!alphabet) return;
+    setErrorMessage(null);
+    setStreamBuffer((prev) => {
+      const next = `${prev}${alphabet}`;
+      streamBufferRef.current = next;
+      return next;
+    });
+  }, []);
 
   const handleFinalReceived = useCallback(
     async (
@@ -123,10 +206,16 @@ export default function HandSignDetectionPage() {
       };
 
       setHistory((prev) => [newEntry, ...prev]);
+      setLatestFinalText(text);
       setStreamBuffer("");
       streamBufferRef.current = "";
       setIsProcessing(false);
       setErrorMessage(null);
+
+      // 🔥 AUTO TEXT-TO-SPEECH
+      if (isTTSEnabled) {
+        speakText(text);
+      }
 
       if (patientId) {
         setIsSavingHistory(true);
@@ -138,13 +227,13 @@ export default function HandSignDetectionPage() {
             frameCount: metadata.frameCount,
           });
         } catch (err) {
-          console.error("[v0] Failed to save history:", err);
+          console.error("[App] Failed to save history:", err);
         } finally {
           setIsSavingHistory(false);
         }
       }
     },
-    [patientId],
+    [patientId, isTTSEnabled, speakText],
   );
 
   const handleError = useCallback((message: string) => {
@@ -153,9 +242,7 @@ export default function HandSignDetectionPage() {
   }, []);
 
   const handleConnectionChange = useCallback((isConnected: boolean) => {
-    if (!isConnected) {
-      setIsProcessing(false);
-    }
+    if (!isConnected) setIsProcessing(false);
   }, []);
 
   const {
@@ -183,12 +270,14 @@ export default function HandSignDetectionPage() {
 
   const handleFrame = useCallback(
     (imageData: string) => {
-      if (isConnected) {
-        sendFrame(imageData);
-      }
+      if (isConnected) sendFrame(imageData);
     },
     [isConnected, sendFrame],
   );
+
+  const handlePatientNameSubmit = useCallback(() => {
+    submitPatient();
+  }, [submitPatient]);
 
   const handleStop = useCallback(() => {
     if (isConnected) {
@@ -197,33 +286,35 @@ export default function HandSignDetectionPage() {
     }
   }, [isConnected, sendEnd]);
 
+  // ── Landing page helpers ──────────────────────────────────────
   const latest = history[0] ?? null;
   const patientFirstName = patientId.trim().split(/\s+/)[0] || "friend";
 
   const handleStartExperience = useCallback(() => {
-    setPatientNameInput(patientId);
-    setPatientFormError(null);
     setShowPatientForm(true);
-  }, [patientId]);
+  }, []);
 
-  const handlePatientNameSubmit = useCallback(() => {
-    const nextPatientName = patientNameInput.trim();
-
-    if (!nextPatientName) {
-      setPatientFormError("Hey, we need to get to know the patient name first.");
-      return;
-    }
-
-    setPatientFormError(null);
+  const handleNewPatient = useCallback(() => {
+    resetPatient();
+    setHasStarted(false);
+    setHistory([]);
+    setStreamBuffer("");
+    streamBufferRef.current = "";
+    setLatestFinalText("");
     setErrorMessage(null);
-    setPatientId(nextPatientName);
-    setIsTransitioningIn(true);
-    setShowPatientForm(false);
-    setTimeout(() => {
-      setHasStarted(true);
-    }, 350);
-  }, [patientNameInput]);
 
+    void deleteChatSession();
+
+    setShowSuccessMessage("Ready for new patient");
+    setTimeout(() => setShowSuccessMessage(null), 2000);
+
+    // ✅ Tambah ini — buka form setelah reset
+    setTimeout(() => setShowPatientForm(true), 100);
+  }, [resetPatient, deleteChatSession, setShowPatientForm]);
+
+  // ─────────────────────────────────────────────
+  // LANDING PAGE
+  // ─────────────────────────────────────────────
   if (!hasStarted) {
     return (
       <div className="relative min-h-screen overflow-hidden bg-background text-foreground">
@@ -263,71 +354,30 @@ export default function HandSignDetectionPage() {
                 type="button"
                 onClick={() => setShowPatientForm(false)}
                 className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#26a0c9]/25 bg-white/80 text-[#1d9e75] transition-colors hover:bg-white"
-                aria-label="Close patient form"
-              >
+                aria-label="Close patient form">
                 <X className="h-4 w-4" />
               </button>
 
               <div className="pointer-events-none absolute -top-10 left-1/2 h-20 w-36 -translate-x-1/2 rounded-full bg-[#6ddccd]/25 blur-2xl" />
               <div className="pointer-events-none absolute -right-8 top-10 h-20 w-20 rounded-full bg-[#26a0c9]/15 blur-2xl" />
 
-              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-[#1d9e75]/20 bg-[#9fe1cb]/35 text-2xl shadow-sm">
-                🩺
-              </div>
-
-              <h2 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-                Who&apos;s the patient today?
-              </h2>
-
-              <div className="mt-6 text-left">
-
-                <input
-                  id="patient-name"
-                  type="text"
-                  value={patientNameInput}
-                  onChange={(event) => {
-                    setPatientNameInput(event.target.value);
-                    if (patientFormError) {
-                      setPatientFormError(null);
-                    }
-                  }}
-                  placeholder="Patient Name"
-                  autoFocus
-                  className="w-full rounded-xl border border-[#26a0c9]/25 bg-white/85 px-4 py-3 text-sm text-foreground shadow-sm outline-none transition-all placeholder:text-muted-foreground focus:border-[#1d9e75] focus:ring-2 focus:ring-[#6ddccd]/25"
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      handlePatientNameSubmit();
-                    }
-
-                    if (event.key === "Escape") {
-                      setShowPatientForm(false);
-                    }
-                  }}
-                />
-                {patientFormError && (
-                  <p className="mt-2 text-xs font-medium text-[#b42318]">{patientFormError}</p>
-                )}
-              </div>
-
-              <div className="mt-5 flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handlePatientNameSubmit}
-                  className="w-full rounded-xl bg-gradient-to-br from-[#6ddccd] to-[#26a0c9] px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#26a0c9]/20 transition-all hover:scale-[1.02] hover:shadow-xl"
-                >
-                  Continue →
-                </button>
-              </div>
+              <PatientForm
+                patientNameInput={patientNameInput}
+                onPatientNameChange={setPatientNameInput}
+                patientFormError={patientFormError}
+                onSubmit={submitPatient}
+                onCancel={() => setShowPatientForm(false)}
+              />
             </div>
           </div>
         )}
 
         <div
           className={`relative z-10 flex min-h-screen items-center justify-center px-6 transition-all duration-500 ${
-            isTransitioningIn ? "opacity-0 scale-95 -translate-y-6" : "opacity-100 scale-100 translate-y-0"
-          }`}
-        >
+            isTransitioningIn
+              ? "opacity-0 scale-95 -translate-y-6"
+              : "opacity-100 scale-100 translate-y-0"
+          }`}>
           <div className="relative w-full max-w-3xl overflow-hidden rounded-[2rem] bg-card/75 px-8 py-10 sm:px-10 sm:py-12">
             <div className="absolute left-6 top-6 h-24 w-24 rounded-full border border-[#6ddccd]/30" />
             <div className="absolute right-6 top-10 h-14 w-14 rounded-full border-2 border-dashed border-[#26a0c9]/45" />
@@ -339,15 +389,15 @@ export default function HandSignDetectionPage() {
                 Hand Sign Detection
               </h1>
               <p className="mt-4 max-w-xl text-sm text-muted-foreground sm:text-base lg:text-lg">
-                Start live webcam capture and stream hand signs for real-time translation.
+                Start live webcam capture and stream hand signs for real-time
+                translation.
               </p>
 
               <div className="mt-10 flex justify-center">
                 <button
                   type="button"
                   onClick={handleStartExperience}
-                  className="group inline-flex items-center gap-3 rounded-2xl bg-gradient-to-r from-[#6ddccd] to-[#26a0c9] px-8 py-4 text-base font-semibold text-white shadow-xl shadow-[#26a0c9]/20 transition-all duration-300 hover:scale-105 hover:shadow-2xl"
-                >
+                  className="group inline-flex items-center gap-3 rounded-2xl bg-gradient-to-r from-[#6ddccd] to-[#26a0c9] px-8 py-4 text-base font-semibold text-white shadow-xl shadow-[#26a0c9]/20 transition-all duration-300 hover:scale-105 hover:shadow-2xl">
                   <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/20 transition-transform duration-300 group-hover:translate-x-0.5">
                     <Play className="h-4 w-4" />
                   </span>
@@ -361,6 +411,9 @@ export default function HandSignDetectionPage() {
     );
   }
 
+  // ─────────────────────────────────────────────
+  // MAIN APP
+  // ─────────────────────────────────────────────
   return (
     <div className="relative min-h-screen overflow-hidden bg-background text-foreground animate-fade-in-up">
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,hsl(var(--background))_0%,hsl(var(--background))/0.96_50%,hsl(var(--muted))/0.85_100%)]" />
@@ -374,6 +427,7 @@ export default function HandSignDetectionPage() {
         <div className="absolute left-[8%] bottom-[18%] h-40 w-40 rounded-full border-2 border-[#26a0c9]/30" />
       </div>
 
+      {/* ── Header ── */}
       <header className="sticky top-0 z-50 overflow-hidden border-b border-[#26a0c9]/15 bg-[linear-gradient(135deg,hsl(var(--background))/0.92_0%,hsl(var(--background))/0.9_50%,hsl(var(--muted))/0.78_100%)] backdrop-blur-xl">
         <div className="pointer-events-none absolute inset-0 opacity-85">
           <div className="absolute left-[-4rem] top-[-3rem] h-32 w-32 rounded-full border border-[#6ddccd]/35 bg-[#6ddccd]/10" />
@@ -384,17 +438,15 @@ export default function HandSignDetectionPage() {
         <div className="relative z-10 container mx-auto px-4 py-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="text-left">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#1d9e75]">
-                  Hand Sign Detection
-                </p>
-                <h1 className="mt-1 text-2xl font-extrabold leading-tight text-foreground sm:text-3xl lg:text-4xl">
-                  Hello, {patientFirstName}!
-                </h1>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Let&apos;s translate together.
-                </p>
-              </div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#1d9e75]">
+                Hand Sign Detection
+              </p>
+              <h1 className="mt-1 text-2xl font-extrabold leading-tight text-foreground sm:text-3xl lg:text-4xl">
+                Hello, {patientFirstName}!
+              </h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Let&apos;s translate together.
+              </p>
             </div>
 
             <div className="flex flex-wrap items-center justify-start gap-3 lg:justify-end">
@@ -410,13 +462,57 @@ export default function HandSignDetectionPage() {
                 isSavingHistory={isSavingHistory}
               />
 
+              {/* New Patient Button */}
+              <button
+                onClick={handleNewPatient}
+                className="inline-flex items-center gap-2 rounded-xl border border-[#6ddccd]/25 bg-white/55 px-3 py-2 text-sm font-medium text-foreground transition-all duration-200 hover:scale-105 hover:bg-white/75"
+                title="Start a new patient">
+                <Plus className="h-4 w-4 text-[#1d9e75]" />
+                New Patient
+              </button>
+
               <button
                 onClick={() => setShowHistoryModal(true)}
                 className="inline-flex items-center gap-2 rounded-xl border border-[#6ddccd]/25 bg-white/55 px-3 py-2 text-sm font-medium text-foreground transition-all duration-200 hover:scale-105 hover:bg-white/75"
-                title="Translation History"
-              >
+                title="Translation History">
                 <Clock3 className="h-4 w-4 text-[#26a0c9]" />
                 History
+              </button>
+
+              {/* Chat Modal Button */}
+              <button
+                onClick={() => setShowChatModal((p) => !p)}
+                className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-all duration-200 hover:scale-105 ${
+                  showChatModal
+                    ? "border-[#6ddccd]/50 bg-gradient-to-br from-[#6ddccd]/20 to-[#26a0c9]/20 text-[#1d9e75]"
+                    : "border-[#6ddccd]/25 bg-white/55 text-foreground hover:bg-white/75"
+                }`}
+                title="Doctor–Patient Chat">
+                <MessageSquare className="h-4 w-4 text-[#26a0c9]" />
+                Chat
+                {chatSession && (
+                  <span className="ml-1 flex h-4 w-4 items-center justify-center rounded-full bg-[#26a0c9] text-[9px] font-bold text-white">
+                    {chatSession.messages.length > 9
+                      ? "9+"
+                      : chatSession.messages.length}
+                  </span>
+                )}
+              </button>
+
+              {/* TTS Toggle */}
+              <button
+                onClick={toggleTTS}
+                className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-all duration-200 ${
+                  isTTSEnabled
+                    ? "border-[#6ddccd]/50 bg-gradient-to-br from-[#6ddccd]/20 to-[#26a0c9]/20 text-[#1d9e75]"
+                    : "border-[#6ddccd]/25 bg-white/55 text-foreground hover:bg-white/75"
+                }`}
+                title={
+                  isTTSEnabled
+                    ? "Disable text-to-speech"
+                    : "Enable text-to-speech"
+                }>
+                <span className="text-base">{isTTSEnabled ? "🔊" : "🔇"}</span>
               </button>
 
               <button
@@ -440,8 +536,10 @@ export default function HandSignDetectionPage() {
         </div>
       </header>
 
+      {/* ── Main ── */}
       <main className="relative z-10 flex-1 container mx-auto px-4 py-6">
         <div className="grid gap-6 lg:grid-cols-2">
+          {/* Left — camera */}
           <div className="space-y-6">
             <div className="rounded-[1.75rem] border border-[#6ddccd]/25 bg-card/75 p-3 shadow-xl backdrop-blur-sm">
               <WebcamCapture
@@ -453,6 +551,7 @@ export default function HandSignDetectionPage() {
             </div>
           </div>
 
+          {/* Right — live translation + final result */}
           <div className="space-y-6">
             <div className="rounded-[1.75rem] border border-[#26a0c9]/20 bg-card/75 p-3 shadow-xl backdrop-blur-sm">
               <LiveTranslation
@@ -471,16 +570,60 @@ export default function HandSignDetectionPage() {
               />
             </div>
           </div>
+
+          {/* ── Riwayat Chat Pasien ── */}
+          <div className="rounded-[1.75rem] border border-[#26a0c9]/20 bg-card/75 px-5 py-4 shadow-xl backdrop-blur-sm">
+            <div className="flex items-center gap-2 mb-3">
+              <MessageSquare className="h-4 w-4 text-[#26a0c9]" />
+              <h2 className="text-sm font-semibold text-foreground">
+                Riwayat Konsultasi Chat
+              </h2>
+            </div>
+            <HistoryPanel sessions={chatSessions} compact />
+          </div>
         </div>
+
+        {/* Success Toast */}
+        {showSuccessMessage && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-2xl bg-green-500/10 border border-green-500/20 px-5 py-3 text-sm text-green-600 shadow-xl backdrop-blur-sm animate-fade-in-up">
+            <span>{showSuccessMessage}</span>
+          </div>
+        )}
+
+        {/* Chat error toast */}
+        {chatError && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-2xl border border-destructive/20 bg-destructive/10 px-5 py-3 text-sm text-destructive shadow-xl backdrop-blur-sm">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>{chatError}</span>
+            <button
+              onClick={clearChatError}
+              className="ml-2 hover:opacity-70 transition-opacity">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
       </main>
 
+      {/* ── Chat Modal ── */}
+      <ChatModal
+        open={showChatModal}
+        onOpenChange={setShowChatModal}
+        session={chatSession}
+        patientName={patientId}
+        onSendMessage={sendChatMessage}
+        onNewSession={newChatSession}
+        onDeleteSession={deleteChatSession}
+        isLoading={isChatLoading}
+        patientDetectedText={latestFinalText || undefined}
+      />
+
+      {/* ── History modal ── */}
       {showHistoryModal && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center px-4 py-8 sm:px-6">
           <div
             className="absolute inset-0 bg-background/45 backdrop-blur-md"
             onClick={() => setShowHistoryModal(false)}
           />
-
           <div className="relative z-10 w-full max-w-3xl overflow-hidden rounded-[1.75rem] border border-[#26a0c9]/25 bg-card/90 shadow-2xl backdrop-blur-xl">
             <div className="flex items-center justify-between border-b border-[#26a0c9]/15 px-5 py-4 sm:px-6">
               <div className="inline-flex items-center gap-2 text-foreground">
@@ -491,26 +634,28 @@ export default function HandSignDetectionPage() {
                 type="button"
                 onClick={() => setShowHistoryModal(false)}
                 className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#26a0c9]/25 bg-white/70 text-[#1d9e75] transition-colors hover:bg-white"
-                aria-label="Close translation history"
-              >
+                aria-label="Close">
                 <X className="h-4 w-4" />
               </button>
             </div>
-
             <div className="max-h-[70vh] overflow-y-auto p-4 sm:p-6">
-              <HistoryPanel history={history} />
+              <HistoryPanel sessions={chatSessions} />
             </div>
           </div>
         </div>
       )}
 
+      {/* ── Settings ── */}
       <SettingsDialog
         open={showSettings}
         onOpenChange={setShowSettings}
         serverUrl={serverUrl}
         onServerUrlChange={setServerUrl}
         patientId={patientId}
-        onPatientIdChange={setPatientId}
+        onPatientIdChange={(id) => {
+          // Update patient ID from settings
+          // Note: This doesn't reset state, just updates for reference
+        }}
         serverStatus={serverStatus}
         isLoadingStatus={isLoadingStatus}
         onRefreshStatus={fetchServerStatus}

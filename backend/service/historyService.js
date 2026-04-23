@@ -76,20 +76,20 @@ export const getAllHistory = async (limit = 100) => {
   }
 };
 
-export const deleteHistoryByPatient = async (patientId) => {
+export const deleteHistoryByPatient = async (patientName) => {
   try {
-    if (!patientId) {
-      throw new Error("patientId is required");
+    if (!patientName) {
+      throw new Error("patientName is required");
     }
 
-    const result = await History.deleteMany({ patientId });
+    const result = await History.deleteMany({ patientName });
     logger.info(
-      `Deleted ${result.deletedCount} records for patient ${patientId}`,
+      `Deleted ${result.deletedCount} records for patient ${patientName}`,
     );
     return result;
   } catch (error) {
     logger.error(
-      `Failed to delete history for patient ${patientId}:`,
+      `Failed to delete history for patient ${patientName}:`,
       error.message,
     );
     throw error;

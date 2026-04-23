@@ -67,11 +67,11 @@ class ApiClient {
 
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
   ): Promise<T> {
     const url = `${this.baseUrl}/api${endpoint}`;
     const hasBody = options.body !== undefined;
-    
+
     const response = await fetch(url, {
       ...options,
       headers: {
@@ -83,9 +83,9 @@ class ApiClient {
 
     if (!response.ok) {
       const fallback = `HTTP ${response.status}`;
-      const errorBody = await response
-        .json()
-        .catch(async () => ({ message: await response.text().catch(() => fallback) }));
+      const errorBody = await response.json().catch(async () => ({
+        message: await response.text().catch(() => fallback),
+      }));
 
       const message =
         (errorBody as { error?: string; message?: string }).error ??
@@ -137,7 +137,7 @@ class ApiClient {
     data: HistoryRecord[];
   }> {
     return this.request<{ total: number; data: HistoryRecord[] }>(
-      `/history?limit=${limit}`,
+      `/chat?limit=${limit}`,
     );
   }
 
@@ -166,12 +166,12 @@ class ApiClient {
   }
 
   async deletePatientHistory(
-    patientId: string
+    patientId: string,
   ): Promise<{ message: string; deleted: number }> {
     return this.request<{ message: string; deleted: number }>(
       `/history/${encodeURIComponent(patientId)}`,
       {
-      method: "DELETE",
+        method: "DELETE",
       },
     );
   }

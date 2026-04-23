@@ -148,10 +148,15 @@ export const handleMessage = async (ws, message, session) => {
 
     if (!isValidMessage(data)) {
       logger.warn(
-        `Invalid message format from ${session.clientId}:`,
-        JSON.stringify(data),
+        `Invalid message format from ${session.clientId}. Type: ${data?.type}, Has frame: ${!!data?.frame}`,
       );
-      ws.send(JSON.stringify(formatErrorResponse("Invalid message format")));
+      ws.send(
+        JSON.stringify(
+          formatErrorResponse(
+            "Invalid message format - check message structure",
+          ),
+        ),
+      );
       return;
     }
 
@@ -176,11 +181,16 @@ export const handleMessage = async (ws, message, session) => {
     try {
       ws.send(
         JSON.stringify(
-          formatErrorResponse("Internal server error", error.message),
+          formatErrorResponse(
+            "Internal server error",
+            error instanceof SyntaxError
+              ? "Invalid JSON format"
+              : error.message,
+          ),
         ),
       );
     } catch (e) {
-      logger.error("Failed to send error response");
+      logger.error("Failed to send error response:", e.message);
     }
   }
 };
@@ -259,7 +269,10 @@ const handleFrameMessage = async (ws, data, session) => {
     );
     ws.send(
       JSON.stringify(
-        formatErrorResponse("AI service error", error?.message ?? "Unknown error"),
+        formatErrorResponse(
+          "AI service error",
+          error?.message ?? "Unknown error",
+        ),
       ),
     );
   }
