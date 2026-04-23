@@ -1,0 +1,85 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: healthsign-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  ai-service:
+    build:
+      context: ./aiservice
+      dockerfile: Dockerfile
+    container_name: healthsign-ai-service
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    environment:
+      MODEL_PATH: /app/models/best.pt
+      CONFIDENCE_THRESHOLD: 0.45
+    volumes:
+      - ./aiservice:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 5001 --reload
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: healthsign-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      PORT: 8000
+      NODE_ENV: development
+      MONGO_URI: mongodb://mongo:27017/healthsign
+      AI_SERVICE_URL: http://ai-service:5001
+      USE_MOCK_AI: "false"
+      ENABLE_REFINEMENT: "false"
+      LOG_LEVEL: info
+      WS_HEARTBEAT_INTERVAL: 30000
+      WS_STREAM_TIMEOUT: 1500
+      WS_MAX_FRAME_SIZE: 5242880
+      FRAME_STABILITY_THRESHOLD: 2
+      MAX_BUFFER_SIZE: 10000
+      MAX_CONCURRENT_FRAMES: 100
+    volumes:
+      - ./backend:/app
+      - backend-node-modules:/app/node_modules
+    command: npm run dev
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: healthsign-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_BACKEND_HTTP_URL: http://localhost:8000
+      VITE_BACKEND_WS_URL: ws://localhost:8000
+      CHOKIDAR_USEPOLLING: "true"
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+    command: npm run dev -- --host 0.0.0.0 --port 5173 --strictPort
+    depends_on:
+      backend:
+        condition: service_started
+
+volumes:
+  mongo-data:
+  backend-node-modules:
+  frontend-node-modules:
