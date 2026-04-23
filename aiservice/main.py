@@ -33,14 +33,13 @@ class SignDetector:
         try:
             self.model = YOLO(self.model_path)
             self.model_load_error = None
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self.model = None
             self.model_load_error = str(exc)
 
     def decode_frame(self, frame_data: str) -> Image.Image:
         payload = frame_data
         if "," in frame_data:
-            # Support data URL format: data:image/jpeg;base64,<payload>
             payload = frame_data.split(",", 1)[1]
 
         image_bytes = base64.b64decode(payload, validate=True)
