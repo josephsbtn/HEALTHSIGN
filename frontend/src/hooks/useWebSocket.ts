@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FinalMessage, ServerMessage } from "@/lib/types";
+import { getDefaultBackendWsUrl } from "@/lib/connection";
 
 export interface UseWebSocketOptions {
   enabled?: boolean;
@@ -107,7 +108,7 @@ function parseMessage(rawData: unknown): ServerMessage | null {
 
 export function useWebSocket({
   enabled = true,
-  serverUrl = "wss://healthsign.me/ws",
+  serverUrl = getDefaultBackendWsUrl(),
   patientId,
   onAlphabetReceived,
   onFinalReceived,

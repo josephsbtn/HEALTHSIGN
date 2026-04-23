@@ -2,6 +2,8 @@
  * REST API client for hand sign detection backend
  */
 
+import { getDefaultBackendHttpUrl } from "./connection";
+
 export interface ServerStatus {
   status: string;
   timestamp: string;
@@ -45,7 +47,7 @@ export interface SessionInfo {
 }
 
 const DEFAULT_HTTP_BASE_URL =
-  import.meta.env.VITE_BACKEND_HTTP_URL ?? "http://localhost:8000";
+  import.meta.env.VITE_BACKEND_HTTP_URL ?? getDefaultBackendHttpUrl();
 
 class ApiClient {
   private baseUrl: string;

@@ -24,11 +24,12 @@ import { useWebSocket } from "./hooks/useWebSocket";
 import { useChat } from "./hooks/useChat";
 import { usePatient } from "./hooks/usePatient";
 import { useTTS } from "./hooks/useTTS";
+import { getDefaultBackendWsUrl } from "@/lib/connection";
 import { api, type ServerStatus } from "./lib/api";
 import type { HistoryEntry } from "./lib/types";
 
 const DEFAULT_SERVER_URL =
-  import.meta.env.VITE_BACKEND_WS_URL ?? "wss://healthsign.me/ws";
+  import.meta.env.VITE_BACKEND_WS_URL ?? getDefaultBackendWsUrl();
 
 export default function HandSignDetectionPage() {
   const [hasStarted, setHasStarted] = useState(false);
