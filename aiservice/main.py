@@ -3,10 +3,14 @@ import os
 from io import BytesIO
 from typing import Any
 
+import torch.serialization
 from fastapi import FastAPI, HTTPException
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel
 from ultralytics import YOLO
+from ultralytics.nn.tasks import DetectionModel
+import torch
+import torch.nn
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -31,12 +35,23 @@ class SignDetector:
 
     def _load_model(self) -> None:
         try:
+            torch.serialization.add_safe_globals([DetectionModel, torch.nn.modules.container.Sequential])
             self.model = YOLO(self.model_path)
             self.model_load_error = None
 
         except Exception as exc:
-            self.model = None
-            self.model_load_error = str(exc)
+            if "weights_only" in str(exc):
+                # Fallback: load with weights_only=False
+                original_load = torch.load
+                torch.load = lambda *args, **kwargs: original_load(*args, weights_only=False, **kwargs)
+                try:
+                    self.model = YOLO(self.model_path)
+                    self.model_load_error = None
+                finally:
+                    torch.load = original_load
+            else:
+                self.model = None
+                self.model_load_error = str(exc)
 
     def decode_frame(self, frame_data: str) -> Image.Image:
         payload = frame_data
