@@ -2,7 +2,7 @@
  * REST API client for hand sign detection backend
  */
 
-import { getDefaultBackendHttpUrl } from "./connection";
+import { getDefaultBackendHttpUrl, wsToHttpBaseUrl } from "./connection";
 
 export interface ServerStatus {
   status: string;
@@ -65,10 +65,7 @@ class ApiClient {
   }
 
   private normalizeBaseUrl(url: string) {
-    return url
-      .replace(/^ws:/, "http:")
-      .replace(/^wss:/, "https:")
-      .replace(/\/$/, "");
+    return wsToHttpBaseUrl(url);
   }
 
   private async request<T>(

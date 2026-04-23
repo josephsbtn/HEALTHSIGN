@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FinalMessage, ServerMessage } from "@/lib/types";
-import { getDefaultBackendWsUrl } from "@/lib/connection";
+import { getDefaultBackendWsUrl, normalizeWsUrl } from "@/lib/connection";
 
 export interface UseWebSocketOptions {
   enabled?: boolean;
@@ -169,7 +169,9 @@ export function useWebSocket({
   }, [clearReconnectTimer]);
 
   const connect = useCallback(() => {
-    if (!serverUrl) {
+    const targetUrl = normalizeWsUrl(serverUrl);
+
+    if (!targetUrl) {
       const message = "WebSocket URL is not configured";
       setError(message);
       onErrorRef.current?.(message);
@@ -187,7 +189,7 @@ export function useWebSocket({
     shouldReconnectRef.current = true;
 
     try {
-      const socket = new WebSocket(serverUrl);
+      const socket = new WebSocket(targetUrl);
       wsRef.current = socket;
 
       socket.onopen = () => {

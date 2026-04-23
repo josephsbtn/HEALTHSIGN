@@ -1,12 +1,12 @@
 import { useState, useCallback } from "react";
 import type { ChatSession, MessageSender } from "../components/chatPanel";
+import { wsToHttpBaseUrl } from "../lib/connection";
 
 // ─────────────────────────────────────────────
 // API HELPERS
 // ─────────────────────────────────────────────
 
-const getBaseUrl = (serverUrl: string) =>
-  serverUrl.replace(/^ws(s)?:\/\//, (_, s) => `http${s ?? ""}://`);
+const getBaseUrl = (serverUrl: string) => wsToHttpBaseUrl(serverUrl);
 
 async function apiCreateChat(
   serverUrl: string,

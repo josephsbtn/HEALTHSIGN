@@ -1,19 +1,22 @@
-FROM python:3.11-slim
+FROM python:3.9-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+# Install library sistem untuk OpenCV & Mediapipe
+RUN apt-get update && apt-get install -y \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY requirements.txt ./
+# Copy requirements & install
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy source code
 COPY . .
 
+# Port default AI Service kamu
 EXPOSE 5001
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5001", "--reload"]
+# Jalankan Uvicorn dengan host 0.0.0.0 agar bisa diakses dari luar container
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5001"]

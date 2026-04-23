@@ -83,7 +83,7 @@ export function SettingsDialog({
                   type="text"
                   value={serverUrl}
                   onChange={(e) => onServerUrlChange(e.target.value)}
-                  placeholder="ws://localhost:8000"
+                  placeholder="wss://healthsign.me/ws"
                   className="rounded-xl"
                 />
               </div>

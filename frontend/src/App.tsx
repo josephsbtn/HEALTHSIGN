@@ -24,13 +24,13 @@ import { useWebSocket } from "./hooks/useWebSocket";
 import { useChat } from "./hooks/useChat";
 import { usePatient } from "./hooks/usePatient";
 import { useTTS } from "./hooks/useTTS";
-import { getDefaultBackendWsUrl } from "@/lib/connection";
+import { getDefaultBackendWsUrl, normalizeWsUrl } from "@/lib/connection";
 import { api, type ServerStatus } from "./lib/api";
 import type { HistoryEntry } from "./lib/types";
 
 const configuredWsUrl =
   typeof import.meta.env.VITE_BACKEND_WS_URL === "string"
-    ? import.meta.env.VITE_BACKEND_WS_URL.trim()
+    ? normalizeWsUrl(import.meta.env.VITE_BACKEND_WS_URL)
     : "";
 
 const DEFAULT_SERVER_URL = configuredWsUrl || getDefaultBackendWsUrl();
