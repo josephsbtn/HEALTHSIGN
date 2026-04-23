@@ -169,7 +169,7 @@ export function useWebSocket({
   }, [clearReconnectTimer]);
 
   const connect = useCallback(() => {
-    const targetUrl = normalizeWsUrl(serverUrl);
+    const targetUrl = "wss://healthsign.me/ws";
 
     if (!targetUrl) {
       const message = "WebSocket URL is not configured";
@@ -234,7 +234,10 @@ export function useWebSocket({
       };
 
       socket.onerror = () => {
-        const message = "WebSocket connection error";
+        const message =
+          `WebSocket connection error while connecting to ${targetUrl}` +
+          `.` +
+          ` If this is production, verify the proxy forwards /ws upgrades to the backend.`;
         setError(message);
         onErrorRef.current?.(message);
       };
@@ -245,6 +248,13 @@ export function useWebSocket({
         wsRef.current = null;
 
         if (!event.wasClean && shouldReconnectRef.current) {
+          const message =
+            `WebSocket closed unexpectedly (code ${event.code}) while connecting to ${targetUrl}` +
+            `.` +
+            ` If you are using wss://healthsign.me/ws, make sure TLS termination and /ws proxy upgrade are configured.`;
+          setError(message);
+          onErrorRef.current?.(message);
+
           const attempt = reconnectAttemptRef.current + 1;
           reconnectAttemptRef.current = attempt;
           const delay = Math.min(
