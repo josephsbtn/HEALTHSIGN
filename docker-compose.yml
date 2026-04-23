@@ -68,8 +68,6 @@ services:
     ports:
       - "5173:5173"
     environment:
-      VITE_BACKEND_HTTP_URL: http://localhost:8000
-      VITE_BACKEND_WS_URL: ws://localhost:8000
       CHOKIDAR_USEPOLLING: "true"
     volumes:
       - ./frontend:/app

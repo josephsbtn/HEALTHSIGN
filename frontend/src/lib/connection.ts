@@ -1,4 +1,6 @@
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+const DEFAULT_BACKEND_PORT = "8000";
+const COMMON_FRONTEND_PORTS = new Set(["5173", "4173", "3000"]);
 
 function isBrowser(): boolean {
   return typeof window !== "undefined";
@@ -13,9 +15,13 @@ export function getDefaultBackendHttpUrl() {
     return "http://localhost:8000";
   }
 
-  const { hostname, host, protocol } = window.location;
+  const { hostname, host, protocol, port } = window.location;
   if (isLocalHost(hostname)) {
     return "http://localhost:8000";
+  }
+
+  if (COMMON_FRONTEND_PORTS.has(port)) {
+    return `${protocol}//${hostname}:${DEFAULT_BACKEND_PORT}`;
   }
 
   return `${protocol}//${host}`;
@@ -26,11 +32,16 @@ export function getDefaultBackendWsUrl() {
     return "ws://localhost:8000";
   }
 
-  const { hostname, host, protocol } = window.location;
+  const { hostname, host, protocol, port } = window.location;
   if (isLocalHost(hostname)) {
     return "ws://localhost:8000";
   }
 
   const wsProtocol = protocol === "https:" ? "wss:" : "ws:";
+
+  if (COMMON_FRONTEND_PORTS.has(port)) {
+    return `${wsProtocol}//${hostname}:${DEFAULT_BACKEND_PORT}`;
+  }
+
   return `${wsProtocol}//${host}`;
 }

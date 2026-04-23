@@ -46,8 +46,12 @@ export interface SessionInfo {
   uptime: number;
 }
 
-const DEFAULT_HTTP_BASE_URL =
-  import.meta.env.VITE_BACKEND_HTTP_URL ?? getDefaultBackendHttpUrl();
+const configuredHttpUrl =
+  typeof import.meta.env.VITE_BACKEND_HTTP_URL === "string"
+    ? import.meta.env.VITE_BACKEND_HTTP_URL.trim()
+    : "";
+
+const DEFAULT_HTTP_BASE_URL = configuredHttpUrl || getDefaultBackendHttpUrl();
 
 class ApiClient {
   private baseUrl: string;

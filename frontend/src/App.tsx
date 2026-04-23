@@ -28,8 +28,12 @@ import { getDefaultBackendWsUrl } from "@/lib/connection";
 import { api, type ServerStatus } from "./lib/api";
 import type { HistoryEntry } from "./lib/types";
 
-const DEFAULT_SERVER_URL =
-  import.meta.env.VITE_BACKEND_WS_URL ?? getDefaultBackendWsUrl();
+const configuredWsUrl =
+  typeof import.meta.env.VITE_BACKEND_WS_URL === "string"
+    ? import.meta.env.VITE_BACKEND_WS_URL.trim()
+    : "";
+
+const DEFAULT_SERVER_URL = configuredWsUrl || getDefaultBackendWsUrl();
 
 export default function HandSignDetectionPage() {
   const [hasStarted, setHasStarted] = useState(false);
