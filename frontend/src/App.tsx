@@ -61,11 +61,9 @@ export default function HandSignDetectionPage() {
     setPatientNameInput,
     setShowPatientForm,
     submitPatient,
-    startNewPatient,
     resetPatient,
-    clearError: clearPatientError,
   } = usePatient({
-    onPatientChanged: (name) => {
+    onPatientChanged: () => {
       setIsTransitioningIn(true);
       setShowPatientForm(false);
       setTimeout(() => setHasStarted(true), 350);
@@ -253,9 +251,6 @@ export default function HandSignDetectionPage() {
     [isConnected, sendFrame],
   );
 
-  const handlePatientNameSubmit = useCallback(() => {
-    submitPatient();
-  }, [submitPatient]);
 
   const handleStop = useCallback(() => {
     if (isConnected) {
@@ -619,7 +614,7 @@ export default function HandSignDetectionPage() {
         serverUrl={serverUrl}
         onServerUrlChange={setServerUrl}
         patientId={patientId}
-        onPatientIdChange={(id) => {
+        onPatientIdChange={() => {
           // Update patient ID from settings
           // Note: This doesn't reset state, just updates for reference
         }}
