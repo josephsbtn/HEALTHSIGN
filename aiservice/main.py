@@ -33,7 +33,8 @@ class SignDetector:
         try:
             self.model = YOLO(self.model_path)
             self.model_load_error = None
-        except Exception as exc: 
+
+        except Exception as exc:
             self.model = None
             self.model_load_error = str(exc)
 
