@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FinalMessage, ServerMessage } from "@/lib/types";
-import { getDefaultBackendWsUrl, normalizeWsUrl } from "@/lib/connection";
+import { getDefaultBackendWsUrl } from "@/lib/connection";
 
 export interface UseWebSocketOptions {
   enabled?: boolean;
