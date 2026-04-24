@@ -1,12 +1,15 @@
-FROM node:20-alpine
-
+# Tahap 1: Build aplikasi React/Vite
+FROM node:20-alpine as build-stage
 WORKDIR /app
-
 COPY package*.json ./
-RUN npm ci
-
+RUN npm install
 COPY . .
+RUN npm run build
 
-EXPOSE 5173
-
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173", "--strictPort"]
+# Tahap 2: Gunakan Nginx untuk melayani file hasil build
+FROM nginx:stable-alpine
+# Copy hasil build dari tahap 1 ke folder Nginx
+COPY --from=build-stage /app/dist /usr/share/nginx/html
+# Jalankan Nginx
+EXPOSE 80 443
+CMD ["nginx", "-g", "daemon off;"]
