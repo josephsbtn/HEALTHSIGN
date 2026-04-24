@@ -26,6 +26,35 @@ export function StatusBar({
   isLoadingStatus,
   isSavingHistory,
 }: StatusBarProps) {
+  const aiProvider = serverStatus?.aiRuntime?.provider;
+  const aiLabel =
+    aiProvider === "live"
+      ? "AI Live"
+      : aiProvider === "mock-fallback"
+        ? "AI Fallback"
+        : serverStatus?.config.useMockAI
+          ? "AI Mock"
+          : "AI Offline";
+
+  const aiDotClass =
+    aiProvider === "live"
+      ? "bg-green-500"
+      : aiProvider === "mock-fallback"
+        ? "bg-amber-500"
+        : serverStatus?.config.useMockAI
+          ? "bg-sky-500"
+          : "bg-red-500";
+
+  const aiTooltip =
+    serverStatus?.aiRuntime?.lastError ??
+    (aiProvider === "live"
+      ? "Using live AI service"
+      : aiProvider === "mock-fallback"
+        ? "Live AI unavailable, using mock fallback"
+        : serverStatus?.config.useMockAI
+          ? "Mock AI enabled by configuration"
+          : "AI service is not responding");
+
   return (
     <div className="flex items-center gap-2">
       {messagesReceived > 0 && (
@@ -59,17 +88,10 @@ export function StatusBar({
       {/* Server status */}
       {serverStatus && (
         <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted text-xs text-muted-foreground">
-          {serverStatus.config.enableRefinement ? (
-            <span className="flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-              Gemini
-            </span>
-          ) : (
-            <span className="flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-              No AI
-            </span>
-          )}
+          <span className="flex items-center gap-1" title={aiTooltip}>
+            <span className={`w-1.5 h-1.5 rounded-full ${aiDotClass}`} />
+            {aiLabel}
+          </span>
         </div>
       )}
 

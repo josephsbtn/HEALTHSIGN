@@ -14,6 +14,12 @@ export interface ServerStatus {
     heapUsed: number;
   };
   activeSessions: number;
+  aiRuntime?: {
+    provider: "live" | "mock" | "mock-fallback";
+    fallbackActive: boolean;
+    lastError: string | null;
+    updatedAt: string;
+  };
   config: {
     environment: string;
     useMockAI: boolean;

@@ -15,7 +15,7 @@ import {
   deleteChatById,
 } from "./service/chatService.js";
 import { refineText } from "./service/refinementService.js";
-import { detectAlphabet } from "./service/aiService.js";
+import { detectAlphabet, getAiRuntimeStatus } from "./service/aiService.js";
 import { getActiveSessions, getSessionCount } from "./service/webSocket.js";
 import createLogger from "./logger.js";
 import { config } from "./config.js";
@@ -46,6 +46,7 @@ router.get(
       uptime: process.uptime(),
       memory: process.memoryUsage(),
       activeSessions: getSessionCount(),
+      aiRuntime: getAiRuntimeStatus(),
       config: {
         environment: config.NODE_ENV,
         useMockAI: config.USE_MOCK_AI,

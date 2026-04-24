@@ -201,9 +201,6 @@ export function useWebSocket({
         if (patientId) {
           socket.send(JSON.stringify({ type: "connect", patientId }));
         }
-
-        pingTimestampRef.current = Date.now();
-        socket.send(JSON.stringify({ type: "ping" }));
       };
 
       socket.onmessage = (event) => {

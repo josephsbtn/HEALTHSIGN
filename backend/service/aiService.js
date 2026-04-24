@@ -4,6 +4,19 @@ import createLogger from "../logger.js";
 
 const logger = createLogger("AIService");
 
+const runtimeStatus = {
+  provider: config.USE_MOCK_AI ? "mock" : "live",
+  fallbackActive: false,
+  lastError: null,
+  updatedAt: new Date().toISOString(),
+};
+
+const setRuntimeStatus = (next) => {
+  Object.assign(runtimeStatus, next, { updatedAt: new Date().toISOString() });
+};
+
+export const getAiRuntimeStatus = () => ({ ...runtimeStatus });
+
 const MOCK_ALPHABETS = [
   "A",
   "K",
@@ -52,20 +65,35 @@ export const detectAlphabetFromAPI = async (frame) => {
     if (!response.data || typeof response.data.alphabet !== "string") {
       const message = "Invalid response from AI service";
       logger.warn(message, response.data);
-      if (config.USE_MOCK_AI) {
-        return detectAlphabetMock(frame);
-      }
-      throw new Error(message);
+      setRuntimeStatus({
+        provider: "mock-fallback",
+        fallbackActive: true,
+        lastError: message,
+      });
+      return detectAlphabetMock(frame);
     }
 
+    if (!response.data.alphabet.trim()) {
+      logger.warn("AI service returned an empty alphabet, falling back to mock");
+      setRuntimeStatus({
+        provider: "mock-fallback",
+        fallbackActive: true,
+        lastError: "Empty alphabet from AI service",
+      });
+      return detectAlphabetMock(frame);
+    }
+
+    setRuntimeStatus({ provider: "live", fallbackActive: false, lastError: null });
     logger.debug("Detected alphabet from API:", response.data.alphabet);
     return response.data;
   } catch (error) {
     logger.error("AI service error", error?.message ?? error);
-    if (config.USE_MOCK_AI) {
-      return detectAlphabetMock(frame);
-    }
-    throw error;
+    setRuntimeStatus({
+      provider: "mock-fallback",
+      fallbackActive: true,
+      lastError: error?.message ?? "AI service request failed",
+    });
+    return detectAlphabetMock(frame);
   }
 };
 
@@ -84,12 +112,18 @@ export const detectAlphabet = async (frame) => {
 
   try {
     if (config.USE_MOCK_AI) {
+      setRuntimeStatus({ provider: "mock", fallbackActive: false, lastError: null });
       return await detectAlphabetMock(frame);
     }
     return await detectAlphabetFromAPI(frame);
   } catch (error) {
     logger.error("Unexpected error in detectAlphabet:", error?.message ?? error);
-    return { alphabet: "" };
+    setRuntimeStatus({
+      provider: "mock-fallback",
+      fallbackActive: true,
+      lastError: error?.message ?? "Unexpected detection error",
+    });
+    return await detectAlphabetMock(frame);
   }
 };
 
@@ -97,4 +131,5 @@ export default {
   detectAlphabet,
   detectAlphabetFromAPI,
   detectAlphabetMock,
+  getAiRuntimeStatus,
 };

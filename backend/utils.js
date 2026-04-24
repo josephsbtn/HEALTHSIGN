@@ -15,6 +15,10 @@ export const isValidMessage = (data) => {
     return true;
   }
 
+  if (data.type === "ping") {
+    return true;
+  }
+
   return false;
 };
 
