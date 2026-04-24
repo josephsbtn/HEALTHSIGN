@@ -73,6 +73,22 @@ services:
       backend:
         condition: service_started
 
+  caddy:
+    image: caddy:2-alpine
+    container_name: healthsign-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - frontend
+
 volumes:
   mongo-data:
   backend-node-modules:
+  caddy-data:
+  caddy-config:
