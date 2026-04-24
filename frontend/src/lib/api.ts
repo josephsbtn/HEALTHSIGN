@@ -15,7 +15,7 @@ export interface ServerStatus {
   };
   activeSessions: number;
   aiRuntime?: {
-    provider: "live" | "mock" | "mock-fallback";
+    provider: "live" | "mock" | "mock-fallback" | "offline";
     fallbackActive: boolean;
     lastError: string | null;
     updatedAt: string;

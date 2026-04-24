@@ -17,6 +17,24 @@ const setRuntimeStatus = (next) => {
 
 export const getAiRuntimeStatus = () => ({ ...runtimeStatus });
 
+const getFallbackDetection = async (frame, reason) => {
+  if (config.USE_MOCK_AI) {
+    setRuntimeStatus({
+      provider: "mock-fallback",
+      fallbackActive: true,
+      lastError: reason,
+    });
+    return detectAlphabetMock(frame);
+  }
+
+  setRuntimeStatus({
+    provider: "offline",
+    fallbackActive: true,
+    lastError: reason,
+  });
+  return { alphabet: "" };
+};
+
 const MOCK_ALPHABETS = [
   "A",
   "K",
@@ -65,22 +83,13 @@ export const detectAlphabetFromAPI = async (frame) => {
     if (!response.data || typeof response.data.alphabet !== "string") {
       const message = "Invalid response from AI service";
       logger.warn(message, response.data);
-      setRuntimeStatus({
-        provider: "mock-fallback",
-        fallbackActive: true,
-        lastError: message,
-      });
-      return detectAlphabetMock(frame);
+      return getFallbackDetection(frame, message);
     }
 
     if (!response.data.alphabet.trim()) {
-      logger.warn("AI service returned an empty alphabet, falling back to mock");
-      setRuntimeStatus({
-        provider: "mock-fallback",
-        fallbackActive: true,
-        lastError: "Empty alphabet from AI service",
-      });
-      return detectAlphabetMock(frame);
+      const message = "Empty alphabet from AI service";
+      logger.warn(message);
+      return getFallbackDetection(frame, message);
     }
 
     setRuntimeStatus({ provider: "live", fallbackActive: false, lastError: null });
@@ -88,12 +97,10 @@ export const detectAlphabetFromAPI = async (frame) => {
     return response.data;
   } catch (error) {
     logger.error("AI service error", error?.message ?? error);
-    setRuntimeStatus({
-      provider: "mock-fallback",
-      fallbackActive: true,
-      lastError: error?.message ?? "AI service request failed",
-    });
-    return detectAlphabetMock(frame);
+    return getFallbackDetection(
+      frame,
+      error?.message ?? "AI service request failed",
+    );
   }
 };
 
@@ -118,12 +125,7 @@ export const detectAlphabet = async (frame) => {
     return await detectAlphabetFromAPI(frame);
   } catch (error) {
     logger.error("Unexpected error in detectAlphabet:", error?.message ?? error);
-    setRuntimeStatus({
-      provider: "mock-fallback",
-      fallbackActive: true,
-      lastError: error?.message ?? "Unexpected detection error",
-    });
-    return await detectAlphabetMock(frame);
+    return getFallbackDetection(frame, error?.message ?? "Unexpected detection error");
   }
 };
 

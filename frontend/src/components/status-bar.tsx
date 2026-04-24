@@ -32,6 +32,8 @@ export function StatusBar({
       ? "AI Live"
       : aiProvider === "mock-fallback"
         ? "AI Fallback"
+        : aiProvider === "offline"
+          ? "AI Offline"
         : serverStatus?.config.useMockAI
           ? "AI Mock"
           : "AI Offline";
@@ -41,6 +43,8 @@ export function StatusBar({
       ? "bg-green-500"
       : aiProvider === "mock-fallback"
         ? "bg-amber-500"
+        : aiProvider === "offline"
+          ? "bg-red-500"
         : serverStatus?.config.useMockAI
           ? "bg-sky-500"
           : "bg-red-500";
